@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "calibration_data")
 data class CalibrationData(
     @PrimaryKey(autoGenerate = true)
-    val id: Int = 1,
+    val id: Int = 0,
     val firstRowX: Int = 100,
     val firstRowY: Int = 300,
     val rowYOffset: Int = 80,
