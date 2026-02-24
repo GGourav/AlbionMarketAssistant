@@ -9,7 +9,6 @@ import com.albion.marketassistant.media.ScreenCaptureManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.coroutines.coroutineContext
 
 class StateMachine(
     private val uiInteractor: UIInteractor,
