@@ -56,12 +56,16 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         val rootNode = accessibilityService.rootInActiveWindow ?: return
         val focusedNode = findFocusedNode(rootNode) ?: return
         
-        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
-        delay(100)
-        
-        repeat(20) {
-            focusedNode.performAction(AccessibilityNodeInfo.ACTION_DELETE)
-            delay(10)
+        try {
+            focusedNode.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+            delay(100)
+            
+            repeat(20) {
+                focusedNode.performAction(AccessibilityNodeInfo.ACTION_DELETE)
+                delay(10)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -69,13 +73,17 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         val rootNode = accessibilityService.rootInActiveWindow ?: return
         val focusedNode = findFocusedNode(rootNode) ?: return
         
-        val bundle = Bundle()
-        bundle.putCharSequence(
-            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-            text
-        )
-        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-        delay(100)
+        try {
+            val bundle = Bundle()
+            bundle.putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                text
+            )
+            focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+            delay(100)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun findFocusedNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
