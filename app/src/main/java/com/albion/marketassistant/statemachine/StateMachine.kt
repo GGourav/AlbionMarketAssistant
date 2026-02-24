@@ -29,7 +29,6 @@ class StateMachine(
     private var loopJob: Job? = null
     
     var onStateChange: ((AutomationState) -> Unit)? = null
-    var onIterationComplete: ((Boolean) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     
     fun startMode(mode: OperationMode) {
@@ -40,9 +39,7 @@ class StateMachine(
         isRunning = true
         currentMode = mode
         currentRowIndex = 0
-        loopJob = scope.launch {
-            mainLoop()
-        }
+        loopJob = scope.launch { mainLoop() }
     }
     
     fun stop() {
@@ -64,18 +61,17 @@ class StateMachine(
             }
         } catch (e: Exception) {
             isRunning = false
-            onError?.invoke("State Machine Error: ${e.message}")
+            onError?.invoke("Error: ${e.message}")
         }
     }
     
     private suspend fun executeNewOrderSweeperLoop() {
         try {
             val (rowX, rowY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, rowX, rowY, "Tapping row $currentRowIndex")
+            updateState(StateType.EXECUTE_TAP, rowX, rowY, "Tapping row")
             
             uiInteractor.performTap(rowX, rowY, calibration.tapDurationMs)
-            
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup...")
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting...")
             delay(calibration.popupOpenWaitMs)
             
             val screenshot = screenCaptureManager.captureScreen()
@@ -85,10 +81,8 @@ class StateMachine(
                 false
             }
             
-            updateState(StateType.SCAN_HIGHLIGHTS, "Highlight: $highlightDetected")
-            
             if (highlightDetected) {
-                updateState(StateType.EXECUTE_TAP, "Closing (already ordered)")
+                updateState(StateType.EXECUTE_TAP, "Closing")
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -96,12 +90,12 @@ class StateMachine(
                 )
                 delay(calibration.popupCloseWaitMs)
             } else {
-                updateState(StateType.SCAN_OCR, "Extracting price...")
+                updateState(StateType.SCAN_OCR, "Reading price...")
                 val topPrice = extractTopMarketPrice(screenshot)
                 
                 if (topPrice != null) {
                     val newPrice = topPrice + 5
-                    updateState(StateType.EXECUTE_TEXT_INPUT, "Setting price: $newPrice")
+                    updateState(StateType.EXECUTE_TEXT_INPUT, "Setting price")
                     
                     uiInteractor.performTap(
                         calibration.priceInputX,
@@ -115,44 +109,36 @@ class StateMachine(
                     uiInteractor.injectText(newPrice.toString())
                     delay(calibration.textInputDelayMs)
                     
-                    updateState(StateType.EXECUTE_BUTTON, "Creating order")
+                    updateState(StateType.EXECUTE_BUTTON, "Creating")
                     uiInteractor.performTap(
                         calibration.confirmButtonX,
                         calibration.confirmButtonY,
                         calibration.tapDurationMs
                     )
                     delay(calibration.popupCloseWaitMs)
-                } else {
-                    updateState(StateType.ERROR_RETRY, "OCR failed")
                 }
             }
             
             handleRowIteration()
-            delay(calibration.pixelPollingIntervalMs)
-            
         } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            updateState(StateType.ERROR_RETRY, "Error")
         }
     }
     
     private suspend fun executeOrderEditorLoop() {
         try {
-            val (editButtonX, editButtonY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, editButtonX, editButtonY, "Editing order $currentRowIndex")
+            val (editX, editY) = calculateRowCoordinates(currentRowIndex)
+            updateState(StateType.EXECUTE_TAP, editX, editY, "Editing")
             
-            uiInteractor.performTap(editButtonX, editButtonY, calibration.tapDurationMs)
-            
+            uiInteractor.performTap(editX, editY, calibration.tapDurationMs)
             updateState(StateType.WAIT_POPUP_OPEN, "Waiting...")
             delay(calibration.popupOpenWaitMs)
             
             val screenshot = screenCaptureManager.captureScreen()
-            updateState(StateType.SCAN_OCR, "Reading prices...")
+            val topPrice = extractTopMarketPrice(screenshot)
+            val myPrice = extractPriceFromInputField(screenshot)
             
-            val topMarketPrice = extractTopMarketPrice(screenshot)
-            val myCurrentPrice = extractPriceFromInputField(screenshot)
-            
-            if (topMarketPrice == null || myCurrentPrice == null) {
-                updateState(StateType.ERROR_RETRY, "OCR failed")
+            if (topPrice == null || myPrice == null) {
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -163,10 +149,8 @@ class StateMachine(
                 return
             }
             
-            updateState(StateType.SCAN_OCR, "Market: $topMarketPrice, Mine: $myCurrentPrice")
-            
-            if (myCurrentPrice >= topMarketPrice) {
-                updateState(StateType.EXECUTE_TAP, "Already highest")
+            if (myPrice >= topPrice) {
+                updateState(StateType.EXECUTE_TAP, "Already high")
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -174,8 +158,8 @@ class StateMachine(
                 )
                 delay(calibration.popupCloseWaitMs)
             } else {
-                val newPrice = topMarketPrice + 1
-                updateState(StateType.EXECUTE_TEXT_INPUT, "Updating to $newPrice")
+                val newPrice = topPrice + 1
+                updateState(StateType.EXECUTE_TEXT_INPUT, "Updating")
                 
                 uiInteractor.performTap(
                     calibration.priceInputX,
@@ -189,7 +173,7 @@ class StateMachine(
                 uiInteractor.injectText(newPrice.toString())
                 delay(calibration.textInputDelayMs)
                 
-                updateState(StateType.EXECUTE_BUTTON, "Updating order")
+                updateState(StateType.EXECUTE_BUTTON, "Updating")
                 uiInteractor.performTap(
                     calibration.confirmButtonX,
                     calibration.confirmButtonY,
@@ -199,10 +183,8 @@ class StateMachine(
             }
             
             handleRowIteration()
-            delay(calibration.pixelPollingIntervalMs)
-            
         } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            updateState(StateType.ERROR_RETRY, "Error")
         }
     }
     
@@ -214,7 +196,6 @@ class StateMachine(
     
     private suspend fun handleRowIteration() {
         if (currentRowIndex % calibration.maxRowsPerScreen == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Swiping...")
             uiInteractor.performSwipe(
                 calibration.swipeStartX,
                 calibration.swipeStartY,
@@ -228,13 +209,12 @@ class StateMachine(
     
     private suspend fun detectHighlightedRow(screenshot: android.graphics.Bitmap): Boolean {
         return try {
-            val result = colorDetector.detectColor(
+            colorDetector.detectColor(
                 screenshot,
                 calibration.getBuyOrdersRegion(),
                 calibration.highlightedRowColorHex,
                 calibration.colorToleranceRGB
-            )
-            result.isMatch
+            ).isMatch
         } catch (e: Exception) {
             false
         }
@@ -242,14 +222,12 @@ class StateMachine(
     
     private suspend fun extractTopMarketPrice(screenshot: android.graphics.Bitmap?): Int? {
         if (screenshot == null) return null
-        
         return try {
-            val ocrResults = ocrEngine.recognizeText(
+            ocrEngine.recognizeText(
                 screenshot,
                 calibration.getBuyOrdersRegion(),
                 calibration.ocrLanguage
-            )
-            ocrResults.firstOrNull { it.isNumber }?.numericValue
+            ).firstOrNull { it.isNumber }?.numericValue
         } catch (e: Exception) {
             null
         }
@@ -257,25 +235,18 @@ class StateMachine(
     
     private suspend fun extractPriceFromInputField(screenshot: android.graphics.Bitmap?): Int? {
         if (screenshot == null) return null
-        
         return try {
-            val ocrResults = ocrEngine.recognizeText(
+            ocrEngine.recognizeText(
                 screenshot,
                 calibration.getPriceInputRegion(),
                 calibration.ocrLanguage
-            )
-            ocrResults.firstOrNull { it.isNumber }?.numericValue
+            ).firstOrNull { it.isNumber }?.numericValue
         } catch (e: Exception) {
             null
         }
     }
     
-    private fun updateState(
-        stateType: StateType,
-        x: Int = 0,
-        y: Int = 0,
-        message: String = ""
-    ) {
+    private fun updateState(stateType: StateType, x: Int = 0, y: Int = 0, message: String = "") {
         val state = AutomationState(
             stateType = stateType,
             mode = currentMode,
@@ -286,9 +257,5 @@ class StateMachine(
         )
         _stateFlow.value = state
         onStateChange?.invoke(state)
-    }
-    
-    private fun updateState(stateType: StateType, message: String) {
-        updateState(stateType, 0, 0, message)
     }
 }
