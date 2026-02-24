@@ -8,17 +8,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.ACTION_DELETE
 import kotlinx.coroutines.delay
 
-
 class UIInteractor(private val accessibilityService: AccessibilityService) {
 
     fun performTap(x: Int, y: Int, durationMs: Long = 100) {
-        val path = Path().apply {
-            moveTo(x.toFloat(), y.toFloat())
-        }
+        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
-        
         accessibilityService.dispatchGesture(gesture, null, null)
     }
 
@@ -30,15 +26,13 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
-            
         accessibilityService.dispatchGesture(gesture, null, null)
     }
 
     suspend fun clearTextField(node: AccessibilityNodeInfo?) {
         if (node == null) return
-        // Mash the delete action a few times to clear the existing price
         repeat(15) {
-            node.performAction(AccessibilityNodeInfo.ACTION_DELETE)
+            node.performAction(ACTION_DELETE)
             delay(10)
         }
     }
