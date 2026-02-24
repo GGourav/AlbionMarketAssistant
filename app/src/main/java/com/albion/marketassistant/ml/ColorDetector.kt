@@ -44,17 +44,27 @@ class ColorDetector {
                 }
             }
 
-            if (totalPixels == 0) return ColorDetectionResult(false, 0f, null)
+            if (totalPixels == 0) return ColorDetectionResult(
+                hexColor = "",
+                matchConfidence = 0f,
+                isMatch = false
+            )
 
             val confidence = matchCount.toFloat() / totalPixels.toFloat()
             // If more than 15% of the sampled background is the target color, it's a match
             val isMatch = confidence > 0.15f
 
-            return ColorDetectionResult(isMatch, confidence, if (isMatch) targetHexColor else null)
+            return ColorDetectionResult(
+                hexColor = if (isMatch) targetHexColor else "",
+                matchConfidence = confidence,
+                isMatch = isMatch
+            )
         } catch (e: Exception) {
-            return ColorDetectionResult(false, 0f, null)
+            return ColorDetectionResult(
+                hexColor = "",
+                matchConfidence = 0f,
+                isMatch = false
+            )
         }
     }
 }
-
-
