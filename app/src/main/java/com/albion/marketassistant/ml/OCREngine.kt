@@ -7,8 +7,10 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.tasks.await
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class OCREngine {
     
@@ -39,7 +41,7 @@ class OCREngine {
             val image = InputImage.fromBitmap(croppedBitmap, 0)
             
             return@withContext try {
-                val visionText = recognizer.process(image).await()
+                val visionText = awaitTask(recognizer.process(image))
                 parseVisionText(visionText, region)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -50,6 +52,16 @@ class OCREngine {
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+    
+    private suspend fun <T> awaitTask(task: com.google.android.gms.tasks.Task<T>): T {
+        return suspendCancellableCoroutine { continuation ->
+            task.addOnSuccessListener { result ->
+                continuation.resume(result)
+            }.addOnFailureListener { exception ->
+                continuation.resumeWithException(exception)
+            }
         }
     }
     
@@ -69,7 +81,7 @@ class OCREngine {
                     results.add(
                         OCRResult(
                             text = text,
-                            confidence = line.confidence,
+                            confidence = 0.9f,
                             boundingBox = line.boundingBox ?: Rect(0, 0, 0, 0),
                             isNumber = numericValue != null,
                             numericValue = numericValue
