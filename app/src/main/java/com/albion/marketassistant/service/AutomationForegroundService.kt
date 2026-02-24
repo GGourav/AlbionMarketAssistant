@@ -38,6 +38,7 @@ class AutomationForegroundService : Service() {
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var stateMachine: StateMachine? = null
+    private var currentMode: OperationMode = OperationMode.IDLE
     private var isAccessibilityReady = false
     private var pendingMode: OperationMode? = null
     private var floatingOverlayManager: FloatingOverlayManager? = null
@@ -73,12 +74,15 @@ class AutomationForegroundService : Service() {
         
         // Initialize floating overlay manager
         floatingOverlayManager = FloatingOverlayManager(this) { action ->
-            when (action) {
-                "STOP" -> handleStopMode()
-            }
+            handleOverlayAction(action)
         }
         
         startForeground(NOTIFICATION_ID, createNotification("Ready"))
+        
+        // Show floating overlay immediately
+        if (Settings.canDrawOverlays(this)) {
+            floatingOverlayManager?.show("Select a mode")
+        }
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -101,6 +105,20 @@ class AutomationForegroundService : Service() {
             unregisterReceiver(broadcastReceiver) 
         } catch (e: Exception) { }
         super.onDestroy()
+    }
+    
+    private fun handleOverlayAction(action: String) {
+        when (action) {
+            "CREATE_ORDER" -> {
+                startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
+            }
+            "EDIT_ORDER" -> {
+                startAutomationMode(OperationMode.ORDER_EDITOR)
+            }
+            "STOP" -> {
+                handleStopMode()
+            }
+        }
     }
     
     private fun handleStartMode(intent: Intent) {
@@ -140,6 +158,7 @@ class AutomationForegroundService : Service() {
                 if (accessibilityService == null) {
                     showToast("Accessibility Service not available")
                     updateNotification("Error: Service not available")
+                    floatingOverlayManager?.updateStatus("Error: No Accessibility")
                     return@launch
                 }
                 
@@ -148,24 +167,25 @@ class AutomationForegroundService : Service() {
                 stateMachine?.stop()
                 stateMachine = StateMachine(serviceScope, calibration, uiInteractor)
                 stateMachine?.onStateChange = { state -> 
-                    updateNotification("${mode.name}: ${state.stateType}") 
+                    updateNotification("${mode.name}: ${state.stateType}")
+                    floatingOverlayManager?.updateStatus("${mode.name}: ${state.stateType}")
                 }
                 stateMachine?.onError = { error -> 
                     showToast("Error: $error")
-                    handleStopMode() 
+                    floatingOverlayManager?.updateStatus("Error: $error")
                 }
                 
                 stateMachine?.startMode(mode)
+                currentMode = mode
                 showToast("$mode started")
                 updateNotification("Running: $mode")
-                
-                // Show floating overlay
-                floatingOverlayManager?.show()
+                floatingOverlayManager?.updateStatus("Running: $mode")
                 
             } catch (e: Exception) {
                 showToast("Error: ${e.message}")
                 e.printStackTrace()
                 updateNotification("Error: ${e.message}")
+                floatingOverlayManager?.updateStatus("Error: ${e.message}")
             }
         }
     }
@@ -173,13 +193,11 @@ class AutomationForegroundService : Service() {
     private fun handleStopMode() {
         stateMachine?.stop()
         stateMachine = null
-        pendingMode = null
-        
-        // Hide floating overlay
-        floatingOverlayManager?.hide()
+        currentMode = OperationMode.IDLE
         
         showToast("Stopped")
         updateNotification("Ready")
+        floatingOverlayManager?.updateStatus("Stopped - Select mode")
     }
     
     private fun createNotificationChannel() {
