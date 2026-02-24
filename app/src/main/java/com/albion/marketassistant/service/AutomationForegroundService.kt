@@ -96,6 +96,12 @@ class AutomationForegroundService : Service() {
                 val database = Room.databaseBuilder(applicationContext, CalibrationDatabase::class.java, "calibration_db").build()
                 val calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
                 val accessibilityService = MarketAccessibilityService.getInstance()
+                
+                if (accessibilityService == null) {
+                    showToast("Accessibility Service not available")
+                    return@launch
+                }
+                
                 val uiInteractor = accessibilityService.getUIInteractor()
                 
                 stateMachine = StateMachine(serviceScope, calibration, uiInteractor)
