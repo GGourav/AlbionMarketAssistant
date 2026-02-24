@@ -9,6 +9,7 @@ import com.albion.marketassistant.media.ScreenCaptureManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.coroutines.coroutineContext
 
 class StateMachine(
     private val uiInteractor: UIInteractor,
@@ -32,7 +33,7 @@ class StateMachine(
     }
 
     private suspend fun runLoop() {
-        while (coroutineContext.isActive) {
+        while (job?.isActive == true) {
             try {
                 when (_state.value.stateType) {
                     StateType.SCAN_HIGHLIGHTS -> handleScanning()
