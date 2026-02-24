@@ -1,6 +1,5 @@
-package com.albion.marketassistant.statemachine
+package com.albion.marketassistant.accessibility
 
-import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.data.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
