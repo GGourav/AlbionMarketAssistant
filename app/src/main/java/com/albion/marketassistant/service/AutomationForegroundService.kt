@@ -27,11 +27,6 @@ import com.albion.marketassistant.statemachine.StateMachine
 import com.albion.marketassistant.ui.MainActivity
 import kotlinx.coroutines.*
 
-/**
- * Foreground Service managing the automation state machine.
- * Handles MediaProjection setup, coordinates with AccessibilityService,
- * and manages the automation lifecycle.
- */
 class AutomationForegroundService : Service() {
     
     companion object {
@@ -46,7 +41,6 @@ class AutomationForegroundService : Service() {
         const val ACTION_POPUP_OPENED = "com.albion.POPUP_OPENED"
         
         const val EXTRA_MODE = "mode"
-        const val EXTRA_MEDIA_PROJECTION = "media_projection"
     }
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
@@ -61,10 +55,7 @@ class AutomationForegroundService : Service() {
             when (intent?.action) {
                 ACTION_ACCESSIBILITY_READY -> {
                     isAccessibilityReady = true
-                    showToast("Accessibility Service Connected")
-                }
-                ACTION_POPUP_OPENED -> {
-                    // Handle popup detection events
+                    showToast("Accessibility Connected")
                 }
             }
         }
@@ -76,10 +67,8 @@ class AutomationForegroundService : Service() {
         
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         
-        // Register broadcast receiver
         val intentFilter = IntentFilter().apply {
             addAction(ACTION_ACCESSIBILITY_READY)
-            addAction(ACTION_POPUP_OPENED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             registerReceiver(broadcastReceiver, intentFilter, Context.RECEIVER_EXPORTED)
@@ -88,7 +77,6 @@ class AutomationForegroundService : Service() {
             registerReceiver(broadcastReceiver, intentFilter)
         }
         
-        // Start foreground service with notification
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
     }
@@ -119,11 +107,9 @@ class AutomationForegroundService : Service() {
         super.onDestroy()
     }
     
-    // ==================== MAIN EVENT HANDLERS ====================
-    
     private fun handleStartMode(intent: Intent) {
         if (!isAccessibilityReady) {
-            showToast("ERROR: Enable Accessibility Service in Settings")
+            showToast("ERROR: Enable Accessibility Service")
             return
         }
         
@@ -135,17 +121,14 @@ class AutomationForegroundService : Service() {
         
         serviceScope.launch {
             try {
-                // Initialize database and get calibration
                 val database = Room.databaseBuilder(
                     applicationContext,
                     CalibrationDatabase::class.java,
                     "calibration_db"
                 ).build()
                 
-                val calibration = database.calibrationDao().getCalibration()
-                    ?: CalibrationData()
+                val calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
                 
-                // Initialize components
                 val colorDetector = ColorDetector()
                 val ocrEngine = OCREngine()
                 val accessibilityService = MarketAccessibilityService.instance
@@ -157,13 +140,11 @@ class AutomationForegroundService : Service() {
                 
                 val uiInteractor = accessibilityService.getUIInteractor()
                 
-                // Check screen capture manager
                 if (screenCaptureManager == null) {
                     showToast("ERROR: MediaProjection not initialized")
                     return@launch
                 }
                 
-                // Create and start state machine
                 stateMachine = StateMachine(
                     scope = serviceScope,
                     calibration = calibration,
@@ -183,7 +164,7 @@ class AutomationForegroundService : Service() {
                 }
                 
                 stateMachine?.startMode(mode)
-                showToast("${mode.name} mode started")
+                showToast("${mode.name} started")
                 updateNotification("Running: ${mode.name}")
                 
             } catch (e: Exception) {
@@ -195,18 +176,14 @@ class AutomationForegroundService : Service() {
     
     private fun handleStopMode() {
         stateMachine?.stop()
-        showToast("Automation stopped")
-        updateNotification("Ready to Start")
+        showToast("Stopped")
+        updateNotification("Ready")
     }
     
     private fun handleMediaProjectionRequest() {
-        // MediaProjection setup happens in MainActivity
-        showToast("MediaProjection request initiated")
+        showToast("MediaProjection request")
     }
     
-    /**
-     * Called from MainActivity to pass MediaProjection object.
-     */
     fun setMediaProjection(mediaProjection: android.media.projection.MediaProjection) {
         serviceScope.launch {
             try {
@@ -219,24 +196,21 @@ class AutomationForegroundService : Service() {
                     height = displayMetrics.heightPixels
                 )
                 
-                showToast("Screen capture initialized")
+                showToast("Screen capture ready")
             } catch (e: Exception) {
                 showToast("Error: ${e.message}")
             }
         }
     }
     
-    // ==================== NOTIFICATION MANAGEMENT ====================
-    
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Albion Market Assistant",
+                "Albion Assistant",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Automation status"
-                setShowBadge(false)
             }
             
             val manager = getSystemService(NotificationManager::class.java)
@@ -255,10 +229,9 @@ class AutomationForegroundService : Service() {
         
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Albion Market Assistant")
-            .setContentText("Ready to start automation")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentText("Ready")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
-            .setAutoCancel(false)
             .setOngoing(true)
             .build()
     }
@@ -268,8 +241,7 @@ class AutomationForegroundService : Service() {
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Albion Market Assistant")
                 .setContentText(status)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setAutoCancel(false)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setOngoing(true)
                 .build()
             
