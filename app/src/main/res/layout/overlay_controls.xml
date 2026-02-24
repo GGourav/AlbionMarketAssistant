@@ -5,12 +5,11 @@
     android:background="#80000000"
     android:padding="8dp"
     android:orientation="horizontal">
-    
+
     <Button 
         android:id="@+id/btnStop" 
         android:layout_width="wrap_content" 
         android:layout_height="wrap_content" 
         android:text="STOP BOT" />
-        
-</LinearLayout>
 
+</LinearLayout>
