@@ -6,6 +6,9 @@ import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.ACTION_DELETE
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_SELECT_ALL
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
 import kotlinx.coroutines.delay
 
 class UIInteractor(private val accessibilityService: AccessibilityService) {
