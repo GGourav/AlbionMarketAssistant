@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="32dp"
+    android:padding="24dp"
     android:gravity="center">
 
     <TextView
@@ -12,20 +12,45 @@
         android:text="@string/app_name"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:layout_marginBottom="32dp"/>
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Select Automation Mode"
+        android:textSize="16sp"
+        android:textColor="#666666"
+        android:layout_marginBottom="24dp"/>
 
     <Button
-        android:id="@+id/btnStartOverlay"
+        android:id="@+id/btnNewOrderSweeper"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start Assistant Overlay"
-        android:layout_marginBottom="16dp"/>
+        android:text="🛒 Create Buy Orders"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="12dp"/>
+
+    <Button
+        android:id="@+id/btnOrderEditor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="✏️ Edit Buy Orders"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="24dp"/>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginBottom="24dp"/>
 
     <Button
         android:id="@+id/btnCalibration"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Calibration Settings" />
+        android:text="⚙️ Calibration Settings"
+        android:backgroundTint="#607D8B"/>
 
 </LinearLayout>
-
