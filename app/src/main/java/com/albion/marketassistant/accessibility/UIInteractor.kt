@@ -13,9 +13,6 @@ import kotlinx.coroutines.delay
 
 class UIInteractor(private val accessibilityService: AccessibilityService) {
 
-    /**
-     * Performs a tap at specified coordinates.
-     */
     suspend fun performTap(x: Int, y: Int, durationMs: Long = 100) {
         val path = Path().apply {
             moveTo(x.toFloat(), y.toFloat())
@@ -34,9 +31,6 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         delay(durationMs + 50)
     }
 
-    /**
-     * Performs a swipe gesture from (startX, startY) to (endX, endY).
-     */
     suspend fun performSwipe(
         startX: Int,
         startY: Int,
@@ -62,44 +56,32 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         delay(durationMs + 50)
     }
 
-    /**
-     * Clears the currently focused text field using backspace simulation.
-     */
     suspend fun clearTextField() {
         val rootNode = accessibilityService.rootInActiveWindow ?: return
         val focusedNode = findFocusedNode(rootNode) ?: return
         
-        // Select all text
-        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+        focusedNode.performAction(ACTION_SELECT_ALL)
         delay(100)
         
-        // Delete selected text
         repeat(20) {
             focusedNode.performAction(ACTION_DELETE)
             delay(10)
         }
     }
 
-    /**
-     * Injects text into the currently focused text field.
-     */
     suspend fun injectText(text: String) {
         val rootNode = accessibilityService.rootInActiveWindow ?: return
         val focusedNode = findFocusedNode(rootNode) ?: return
         
-        // Use accessibility bundle to inject text
         val bundle = Bundle()
         bundle.putCharSequence(
-            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+            ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
             text
         )
-        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+        focusedNode.performAction(ACTION_SET_TEXT, bundle)
         delay(100)
     }
 
-    /**
-     * Finds the currently focused text input node.
-     */
     private fun findFocusedNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         if (root.isFocused && root.isEditable) {
             return root
@@ -117,9 +99,6 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         return null
     }
 
-    /**
-     * Finds a node by class name and text (case-insensitive).
-     */
     fun findNodeByText(
         root: AccessibilityNodeInfo?,
         text: String,
@@ -145,9 +124,6 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         return null
     }
 
-    /**
-     * Scrolls the viewport using swipe gesture.
-     */
     suspend fun scrollUp(distance: Int = 500) {
         performSwipe(500, 600, 500, 600 - distance, 400L)
     }
