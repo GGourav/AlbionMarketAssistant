@@ -18,7 +18,7 @@ import com.albion.marketassistant.accessibility.MarketAccessibilityService
 import com.albion.marketassistant.data.CalibrationData
 import com.albion.marketassistant.data.OperationMode
 import com.albion.marketassistant.db.CalibrationDatabase
-import com.albion.marketassistant.statemachine.StateMachine
+import com.albion.marketassistant.accessibility.StateMachine
 import com.albion.marketassistant.ui.MainActivity
 import kotlinx.coroutines.*
 
@@ -95,7 +95,7 @@ class AutomationForegroundService : Service() {
             try {
                 val database = Room.databaseBuilder(applicationContext, CalibrationDatabase::class.java, "calibration_db").build()
                 val calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
-                val accessibilityService = MarketAccessibilityService.instance ?: return@launch
+                val accessibilityService = MarketAccessibilityService.getInstance()
                 val uiInteractor = accessibilityService.getUIInteractor()
                 
                 stateMachine = StateMachine(serviceScope, calibration, uiInteractor)
