@@ -5,10 +5,6 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityNodeInfo.ACTION_DELETE
-import android.view.accessibility.AccessibilityNodeInfo.ACTION_SELECT_ALL
-import android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT
-import android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
 import kotlinx.coroutines.delay
 
 class UIInteractor(private val accessibilityService: AccessibilityService) {
@@ -60,11 +56,11 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         val rootNode = accessibilityService.rootInActiveWindow ?: return
         val focusedNode = findFocusedNode(rootNode) ?: return
         
-        focusedNode.performAction(ACTION_SELECT_ALL)
+        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
         delay(100)
         
         repeat(20) {
-            focusedNode.performAction(ACTION_DELETE)
+            focusedNode.performAction(AccessibilityNodeInfo.ACTION_DELETE)
             delay(10)
         }
     }
@@ -75,10 +71,10 @@ class UIInteractor(private val accessibilityService: AccessibilityService) {
         
         val bundle = Bundle()
         bundle.putCharSequence(
-            ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
             text
         )
-        focusedNode.performAction(ACTION_SET_TEXT, bundle)
+        focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
         delay(100)
     }
 
