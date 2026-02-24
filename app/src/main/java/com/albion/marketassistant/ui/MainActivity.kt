@@ -18,7 +18,7 @@ import com.albion.marketassistant.ui.settings.CalibrationActivity
 class MainActivity : AppCompatActivity() {
 
     private lateinit var projectionManager: MediaProjectionManager
-    private var screenCaptureIntent: Intent? = null
+    private var selectedMode: OperationMode? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,10 +26,19 @@ class MainActivity : AppCompatActivity() {
 
         projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-        findViewById<Button>(R.id.btnStartOverlay).setOnClickListener {
+        // Create Buy Orders mode
+        findViewById<Button>(R.id.btnNewOrderSweeper).setOnClickListener {
+            selectedMode = OperationMode.NEW_ORDER_SWEEPER
             checkPermissionsAndStart()
         }
 
+        // Edit Buy Orders mode
+        findViewById<Button>(R.id.btnOrderEditor).setOnClickListener {
+            selectedMode = OperationMode.ORDER_EDITOR
+            checkPermissionsAndStart()
+        }
+
+        // Calibration Settings
         findViewById<Button>(R.id.btnCalibration).setOnClickListener {
             startActivity(Intent(this, CalibrationActivity::class.java))
         }
@@ -43,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissionsAndStart() {
+        // Check overlay permission
         if (!Settings.canDrawOverlays(this)) {
             showToast("Please allow 'Display over other apps' permission")
             val intent = Intent(
@@ -53,6 +63,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Start Screen Capture Request
         try {
             startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_CODE_SCREEN_CAPTURE)
         } catch (e: Exception) {
@@ -66,8 +77,9 @@ class MainActivity : AppCompatActivity() {
         when (requestCode) {
             REQUEST_CODE_SCREEN_CAPTURE -> {
                 if (resultCode == Activity.RESULT_OK && data != null) {
-                    screenCaptureIntent = data
-                    startAutomationService(data)
+                    selectedMode?.let { mode ->
+                        startAutomationService(mode, data)
+                    }
                 } else {
                     showToast("Screen capture permission denied")
                 }
@@ -75,11 +87,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startAutomationService(screenCaptureData: Intent) {
+    private fun startAutomationService(mode: OperationMode, screenCaptureData: Intent) {
         try {
             val serviceIntent = Intent(this, AutomationForegroundService::class.java).apply {
                 action = AutomationForegroundService.ACTION_START_MODE
-                putExtra(AutomationForegroundService.EXTRA_MODE, OperationMode.NEW_ORDER_SWEEPER)
+                putExtra(AutomationForegroundService.EXTRA_MODE, mode)
                 putExtra("SCREEN_CAPTURE_INTENT", screenCaptureData)
             }
             
@@ -89,7 +101,8 @@ class MainActivity : AppCompatActivity() {
                 startService(serviceIntent)
             }
             
-            showToast("Assistant started - Enable Accessibility Service in Settings")
+            showToast("${mode.name} started - Enable Accessibility Service")
+            finish()
         } catch (e: Exception) {
             showToast("Error starting service: ${e.message}")
             e.printStackTrace()
