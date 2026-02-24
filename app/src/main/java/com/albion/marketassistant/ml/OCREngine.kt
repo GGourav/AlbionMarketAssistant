@@ -3,10 +3,12 @@ package com.albion.marketassistant.ml
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.albion.marketassistant.data.OCRResult
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.tasks.await
+
 
 class OCREngine {
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
