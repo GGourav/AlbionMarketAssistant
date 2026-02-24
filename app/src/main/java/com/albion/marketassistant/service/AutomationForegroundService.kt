@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.albion.marketassistant.accessibility.MarketAccessibilityService
@@ -20,6 +21,7 @@ import com.albion.marketassistant.db.CalibrationDatabase
 import com.albion.marketassistant.accessibility.StateMachine
 import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.ui.MainActivity
+import com.albion.marketassistant.ui.overlay.FloatingOverlayManager
 import kotlinx.coroutines.*
 
 class AutomationForegroundService : Service() {
@@ -38,6 +40,7 @@ class AutomationForegroundService : Service() {
     private var stateMachine: StateMachine? = null
     private var isAccessibilityReady = false
     private var pendingMode: OperationMode? = null
+    private var floatingOverlayManager: FloatingOverlayManager? = null
     
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -68,6 +71,13 @@ class AutomationForegroundService : Service() {
         
         isAccessibilityReady = MarketAccessibilityService.isServiceEnabled()
         
+        // Initialize floating overlay manager
+        floatingOverlayManager = FloatingOverlayManager(this) { action ->
+            when (action) {
+                "STOP" -> handleStopMode()
+            }
+        }
+        
         startForeground(NOTIFICATION_ID, createNotification("Ready"))
     }
     
@@ -85,6 +95,7 @@ class AutomationForegroundService : Service() {
     
     override fun onDestroy() {
         stateMachine?.stop()
+        floatingOverlayManager?.hide()
         serviceScope.cancel()
         try { 
             unregisterReceiver(broadcastReceiver) 
@@ -100,6 +111,13 @@ class AutomationForegroundService : Service() {
             intent.getSerializableExtra(EXTRA_MODE) as? OperationMode
         } ?: return
         
+        // Check overlay permission first
+        if (!Settings.canDrawOverlays(this)) {
+            showToast("Please allow 'Display over other apps' permission")
+            return
+        }
+        
+        // Check if accessibility service is ready
         if (!isAccessibilityReady && !MarketAccessibilityService.isServiceEnabled()) {
             showToast("Please enable Accessibility Service in Settings")
             showToast("Settings > Accessibility > Albion Market Assistant")
@@ -141,6 +159,9 @@ class AutomationForegroundService : Service() {
                 showToast("$mode started")
                 updateNotification("Running: $mode")
                 
+                // Show floating overlay
+                floatingOverlayManager?.show()
+                
             } catch (e: Exception) {
                 showToast("Error: ${e.message}")
                 e.printStackTrace()
@@ -153,6 +174,10 @@ class AutomationForegroundService : Service() {
         stateMachine?.stop()
         stateMachine = null
         pendingMode = null
+        
+        // Hide floating overlay
+        floatingOverlayManager?.hide()
+        
         showToast("Stopped")
         updateNotification("Ready")
     }
