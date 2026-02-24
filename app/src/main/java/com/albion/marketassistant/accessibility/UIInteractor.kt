@@ -5,7 +5,9 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeInfo.ACTION_DELETE
 import kotlinx.coroutines.delay
+
 
 class UIInteractor(private val accessibilityService: AccessibilityService) {
 
