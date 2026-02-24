@@ -43,52 +43,35 @@ data class ColorDetectionResult(
     val matchedHex: String?
 )
 
-data class MarketOrder(
-    val price: Int,
-    val amount: Int
-)
-
 @Entity(tableName = "calibration_data")
 data class CalibrationData(
     @PrimaryKey val id: Int = 1,
-    
-    // Row Tap Coordinates
     val firstRowX: Int = 100,
     val firstRowY: Int = 300,
     val rowYOffset: Int = 80,
     val maxRowsPerScreen: Int = 5,
-    
-    // Buy Orders Region (Right side of popup)
     val buyOrdersRegionLeft: Int = 600,
     val buyOrdersRegionTop: Int = 200,
     val buyOrdersRegionRight: Int = 1050,
     val buyOrdersRegionBottom: Int = 500,
-    
-    // Price Input Region (Left side of popup)
     val priceInputX: Int = 300,
     val priceInputY: Int = 400,
     val priceInputRegionLeft: Int = 200,
     val priceInputRegionTop: Int = 380,
     val priceInputRegionRight: Int = 450,
     val priceInputRegionBottom: Int = 420,
-    
-    // Buttons
     val confirmButtonX: Int = 500,
     val confirmButtonY: Int = 550,
     val closeButtonX: Int = 1000,
     val closeButtonY: Int = 200,
-    
-    // Colors & Timing
     val highlightedRowColorHex: String = "#E8E8E8",
     val colorToleranceRGB: Int = 30,
-    
     val tapDurationMs: Long = 100,
     val textInputDelayMs: Long = 200,
     val popupOpenWaitMs: Long = 800,
     val popupCloseWaitMs: Long = 600,
     val pixelPollingIntervalMs: Long = 300
 ) {
-    fun getBuyOrdersRegion(): Rect {
-        return Rect(buyOrdersRegionLeft, buyOrdersRegionTop, buyOrdersRegionRight, buyOrdersRegionBottom)
-    }
-    
+    fun getBuyOrdersRegion(): Rect = Rect(buyOrdersRegionLeft, buyOrdersRegionTop, buyOrdersRegionRight, buyOrdersRegionBottom)
+    fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
+}
