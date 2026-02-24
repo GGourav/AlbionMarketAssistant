@@ -68,7 +68,7 @@ class StateMachine(
     private suspend fun executeNewOrderSweeperLoop() {
         try {
             val (rowX, rowY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, rowX, rowY, "Tapping row")
+            updateState(StateType.EXECUTE_TAP, "Tapping row")
             
             uiInteractor.performTap(rowX, rowY, calibration.tapDurationMs)
             updateState(StateType.WAIT_POPUP_OPEN, "Waiting...")
@@ -90,7 +90,7 @@ class StateMachine(
                 )
                 delay(calibration.popupCloseWaitMs)
             } else {
-                updateState(StateType.SCAN_OCR, "Reading price...")
+                updateState(StateType.SCAN_OCR, "Reading price")
                 val topPrice = extractTopMarketPrice(screenshot)
                 
                 if (topPrice != null) {
@@ -128,10 +128,10 @@ class StateMachine(
     private suspend fun executeOrderEditorLoop() {
         try {
             val (editX, editY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, editX, editY, "Editing")
+            updateState(StateType.EXECUTE_TAP, "Editing")
             
             uiInteractor.performTap(editX, editY, calibration.tapDurationMs)
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting...")
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting")
             delay(calibration.popupOpenWaitMs)
             
             val screenshot = screenCaptureManager.captureScreen()
@@ -246,13 +246,13 @@ class StateMachine(
         }
     }
     
-    private fun updateState(stateType: StateType, x: Int = 0, y: Int = 0, message: String = "") {
+    private fun updateState(stateType: StateType, message: String = "") {
         val state = AutomationState(
             stateType = stateType,
             mode = currentMode,
             currentRowIndex = currentRowIndex,
-            currentX = x,
-            currentY = y,
+            currentX = 0,
+            currentY = 0,
             errorMessage = if (stateType == StateType.ERROR_RETRY) message else null
         )
         _stateFlow.value = state
