@@ -9,27 +9,17 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
-/**
- * OCR engine using Google ML Kit for text recognition.
- * Extracts numbers from Buy Orders column and Price input field.
- */
 class OCREngine {
     
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     
-    /**
-     * Recognizes text in a specific region of the bitmap.
-     * Returns list of OCRResult with confidence scores.
-     */
     suspend fun recognizeText(
         bitmap: Bitmap,
         region: Rect,
         languageHint: String = "en"
     ): List<OCRResult> = withContext(Dispatchers.Default) {
         try {
-            // Crop to region
             val x = maxOf(0, region.left)
             val y = maxOf(0, region.top)
             val width = minOf(
@@ -63,9 +53,6 @@ class OCREngine {
         }
     }
     
-    /**
-     * Parses ML Kit VisionText into OCRResult list.
-     */
     private fun parseVisionText(
         visionText: com.google.mlkit.vision.text.Text,
         region: Rect
@@ -77,10 +64,8 @@ class OCREngine {
                 val text = line.text.trim()
                 
                 if (text.isNotEmpty()) {
-                    // Try to parse as number
                     val numericValue = extractInteger(text)
                     
-                    // Create OCRResult with proper parameters
                     results.add(
                         OCRResult(
                             text = text,
@@ -94,16 +79,11 @@ class OCREngine {
             }
         }
         
-        return results.sortedBy { it.boundingBox.top }  // Sort top to bottom
+        return results.sortedBy { it.boundingBox.top }
     }
     
-    /**
-     * Extracts first integer from text string.
-     * Handles numbers with commas or special characters.
-     */
     private fun extractInteger(text: String): Int? {
         return try {
-            // Remove non-digit characters except for leading minus
             val cleaned = text.replace(Regex("[^\\d-]"), "")
             if (cleaned.isNotEmpty()) {
                 cleaned.toInt()
@@ -115,9 +95,6 @@ class OCREngine {
         }
     }
     
-    /**
-     * Extracts all numbers from text (useful for compound fields).
-     */
     fun extractAllNumbers(text: String): List<Int> {
         val regex = Regex("\\d+")
         return regex.findAll(text)
