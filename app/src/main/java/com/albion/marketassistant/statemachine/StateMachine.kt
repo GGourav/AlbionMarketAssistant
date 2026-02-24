@@ -35,7 +35,7 @@ class StateMachine(
     }
 
     private suspend fun runLoop() {
-        while (isActive) {
+        while (job?.isActive == true) {
             try {
                 when (_state.value.stateType) {
                     StateType.SCAN_HIGHLIGHTS -> handleScanning()
@@ -53,11 +53,7 @@ class StateMachine(
 
     private suspend fun handleScanning() {
         val bitmap = screenCaptureManager.captureScreen() ?: return
-        
-        // Calculate where the current row is based on index
         val currentY = calibration.firstRowY + (_state.value.currentRowIndex * calibration.rowYOffset)
-        
-        // Check for that specific #E8E8E8 highlight
         val result = colorDetector.detectColor(
             bitmap, 
             android.graphics.Rect(0, currentY, 200, currentY + 50), 
@@ -65,10 +61,8 @@ class StateMachine(
         )
 
         if (result.isMatch) {
-            // Already ours! Skip to next row
             moveToNextRow()
         } else {
-            // Not ours. Tap it and move to OCR
             uiInteractor.performTap(calibration.firstRowX, currentY)
             delay(calibration.popupOpenWaitMs)
             _state.value = _state.value.copy(stateType = StateType.SCAN_OCR)
@@ -98,12 +92,36 @@ class StateMachine(
 
     private suspend fun handleInput() {
         val targetPrice = _state.value.ocrResult?.numericValue?.toString() ?: return
-        
-        // 1. Tap price box
         uiInteractor.performTap(calibration.priceInputX, calibration.priceInputY)
         delay(300)
         
-        // 2. Clear and Inject
+        val node = uiInteractor.findFocusedNode()
+        uiInteractor.clearTextField(node)
+        uiInteractor.injectText(node, targetPrice)
+        delay(calibration.textInputDelayMs)
+        
+        uiInteractor.performTap(calibration.confirmButtonX, calibration.confirmButtonY)
+        _state.value = _state.value.copy(stateType = StateType.WAIT_POPUP_CLOSE)
+    }
+
+    private suspend fun handleClosing() {
+        uiInteractor.performTap(calibration.closeButtonX, calibration.closeButtonY)
+        delay(calibration.popupCloseWaitMs)
+        moveToNextRow()
+    }
+
+    private fun moveToNextRow() {
+        var nextIndex = _state.value.currentRowIndex + 1
+        if (nextIndex >= calibration.maxRowsPerScreen) {
+            uiInteractor.performSwipe(500, 800, 500, 300)
+            nextIndex = 0
+        }
+        _state.value = _state.value.copy(
+            stateType = StateType.SCAN_HIGHLIGHTS,
+            currentRowIndex = nextIndex
+        )
+    }
+}
         val node = uiInteractor.findFocusedNode()
         uiInteractor.clearTextField(node)
         uiInteractor.injectText(node, targetPrice)
