@@ -1,6 +1,5 @@
 package com.albion.marketassistant.statemachine
 
-import android.graphics.Rect
 import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.data.*
 import com.albion.marketassistant.media.ScreenCaptureManager
@@ -10,9 +9,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/**
- * Orchestrates the automation state machine for both operational modes.
- */
 class StateMachine(
     private val scope: CoroutineScope,
     private val calibration: CalibrationData,
@@ -72,22 +68,16 @@ class StateMachine(
         }
     }
     
-    // ==================== MODE 1: NEW ORDER SWEEPER ====================
-    
     private suspend fun executeNewOrderSweeperLoop() {
         try {
-            // STEP 1: Calculate row coordinates
             val (rowX, rowY) = calculateRowCoordinates(currentRowIndex)
             updateState(StateType.EXECUTE_TAP, rowX, rowY, "Tapping row $currentRowIndex")
             
-            // STEP 2: Tap the item row
             uiInteractor.performTap(rowX, rowY, calibration.tapDurationMs)
             
-            // STEP 3: Wait for popup to open
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup to open...")
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup...")
             delay(calibration.popupOpenWaitMs)
             
-            // STEP 4: Capture screen and check for highlight
             val screenshot = screenCaptureManager.captureScreen()
             val highlightDetected = if (screenshot != null) {
                 detectHighlightedRow(screenshot)
@@ -95,12 +85,10 @@ class StateMachine(
                 false
             }
             
-            updateState(StateType.SCAN_HIGHLIGHTS, "Highlight detected: $highlightDetected")
+            updateState(StateType.SCAN_HIGHLIGHTS, "Highlight: $highlightDetected")
             
-            // STEP 5: Branch logic
             if (highlightDetected) {
-                // Already have order - close and next
-                updateState(StateType.EXECUTE_TAP, "Closing popup (already ordered)")
+                updateState(StateType.EXECUTE_TAP, "Closing (already ordered)")
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -108,15 +96,13 @@ class StateMachine(
                 )
                 delay(calibration.popupCloseWaitMs)
             } else {
-                // New order - extract price and create
-                updateState(StateType.SCAN_OCR, "Scanning market price via OCR...")
+                updateState(StateType.SCAN_OCR, "Extracting price...")
                 val topPrice = extractTopMarketPrice(screenshot)
                 
                 if (topPrice != null) {
                     val newPrice = topPrice + 5
-                    updateState(StateType.EXECUTE_TEXT_INPUT, "Setting price to $newPrice")
+                    updateState(StateType.EXECUTE_TEXT_INPUT, "Setting price: $newPrice")
                     
-                    // Tap price input
                     uiInteractor.performTap(
                         calibration.priceInputX,
                         calibration.priceInputY,
@@ -124,14 +110,12 @@ class StateMachine(
                     )
                     delay(calibration.textInputDelayMs)
                     
-                    // Clear and inject text
                     uiInteractor.clearTextField()
                     delay(100)
                     uiInteractor.injectText(newPrice.toString())
                     delay(calibration.textInputDelayMs)
                     
-                    // Tap confirm button
-                    updateState(StateType.EXECUTE_BUTTON, "Clicking Create Buy Order")
+                    updateState(StateType.EXECUTE_BUTTON, "Creating order")
                     uiInteractor.performTap(
                         calibration.confirmButtonX,
                         calibration.confirmButtonY,
@@ -139,45 +123,36 @@ class StateMachine(
                     )
                     delay(calibration.popupCloseWaitMs)
                 } else {
-                    updateState(StateType.ERROR_RETRY, "Failed to extract market price")
+                    updateState(StateType.ERROR_RETRY, "OCR failed")
                 }
             }
             
-            // STEP 6: Scroll to next row
-            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling to next row...")
             handleRowIteration()
             delay(calibration.pixelPollingIntervalMs)
             
         } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error in sweeper loop: ${e.message}")
-            e.printStackTrace()
+            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
         }
     }
     
-    // ==================== MODE 2: ORDER EDITOR ====================
-    
     private suspend fun executeOrderEditorLoop() {
         try {
-            // STEP 1: Calculate edit button coordinates
             val (editButtonX, editButtonY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, editButtonX, editButtonY, "Tapping Edit for order $currentRowIndex")
+            updateState(StateType.EXECUTE_TAP, editButtonX, editButtonY, "Editing order $currentRowIndex")
             
-            // STEP 2: Tap edit button
             uiInteractor.performTap(editButtonX, editButtonY, calibration.tapDurationMs)
             
-            // STEP 3: Wait for popup
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup...")
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting...")
             delay(calibration.popupOpenWaitMs)
             
-            // STEP 4: Dual OCR
             val screenshot = screenCaptureManager.captureScreen()
-            updateState(StateType.SCAN_OCR, "Scanning prices...")
+            updateState(StateType.SCAN_OCR, "Reading prices...")
             
             val topMarketPrice = extractTopMarketPrice(screenshot)
             val myCurrentPrice = extractPriceFromInputField(screenshot)
             
             if (topMarketPrice == null || myCurrentPrice == null) {
-                updateState(StateType.ERROR_RETRY, "Failed to extract prices")
+                updateState(StateType.ERROR_RETRY, "OCR failed")
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -188,12 +163,10 @@ class StateMachine(
                 return
             }
             
-            updateState(StateType.SCAN_OCR, "Top: $topMarketPrice, Mine: $myCurrentPrice")
+            updateState(StateType.SCAN_OCR, "Market: $topMarketPrice, Mine: $myCurrentPrice")
             
-            // STEP 5: Comparison
             if (myCurrentPrice >= topMarketPrice) {
-                // Already highest
-                updateState(StateType.EXECUTE_TAP, "Already highest bidder")
+                updateState(StateType.EXECUTE_TAP, "Already highest")
                 uiInteractor.performTap(
                     calibration.closeButtonX,
                     calibration.closeButtonY,
@@ -201,7 +174,6 @@ class StateMachine(
                 )
                 delay(calibration.popupCloseWaitMs)
             } else {
-                // Outbid - update
                 val newPrice = topMarketPrice + 1
                 updateState(StateType.EXECUTE_TEXT_INPUT, "Updating to $newPrice")
                 
@@ -217,7 +189,7 @@ class StateMachine(
                 uiInteractor.injectText(newPrice.toString())
                 delay(calibration.textInputDelayMs)
                 
-                updateState(StateType.EXECUTE_BUTTON, "Clicking Update Order")
+                updateState(StateType.EXECUTE_BUTTON, "Updating order")
                 uiInteractor.performTap(
                     calibration.confirmButtonX,
                     calibration.confirmButtonY,
@@ -226,18 +198,13 @@ class StateMachine(
                 delay(calibration.popupCloseWaitMs)
             }
             
-            // STEP 6: Next order
-            updateState(StateType.SCROLL_NEXT_ROW, "Moving to next order...")
             handleRowIteration()
             delay(calibration.pixelPollingIntervalMs)
             
         } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error in editor loop: ${e.message}")
-            e.printStackTrace()
+            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
         }
     }
-    
-    // ==================== HELPER METHODS ====================
     
     private fun calculateRowCoordinates(rowIndex: Int): Pair<Int, Int> {
         val x = calibration.firstRowX
@@ -247,7 +214,7 @@ class StateMachine(
     
     private suspend fun handleRowIteration() {
         if (currentRowIndex % calibration.maxRowsPerScreen == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Swiping up...")
+            updateState(StateType.SCROLL_NEXT_ROW, "Swiping...")
             uiInteractor.performSwipe(
                 calibration.swipeStartX,
                 calibration.swipeStartY,
@@ -323,3 +290,5 @@ class StateMachine(
     
     private fun updateState(stateType: StateType, message: String) {
         updateState(stateType, 0, 0, message)
+    }
+}
