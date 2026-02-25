@@ -1,6 +1,10 @@
 package com.albion.marketassistant.ui
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -9,6 +13,8 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.albion.marketassistant.R
 import com.albion.marketassistant.accessibility.MarketAccessibilityService
 import com.albion.marketassistant.data.OperationMode
@@ -18,10 +24,16 @@ import com.albion.marketassistant.ui.settings.CalibrationActivity
 class MainActivity : AppCompatActivity() {
 
     private val OVERLAY_PERMISSION_REQUEST_CODE = 1001
+    private val MEDIA_PROJECTION_REQUEST_CODE = 1002
+    private val NOTIFICATION_PERMISSION_REQUEST_CODE = 1003
+
+    private lateinit var mediaProjectionManager: MediaProjectionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         setupButtons()
         checkPermissions()
@@ -56,21 +68,44 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnOpenSettings).setOnClickListener {
             startActivity(Intent(this, CalibrationActivity::class.java))
         }
+
+        // Add button for requesting screen capture permission
+        findViewById<Button>(R.id.btnRequestScreenCapture)?.setOnClickListener {
+            requestMediaProjection()
+        }
     }
 
     private fun checkPermissions() {
         updatePermissionStatus()
+        
+        // Request notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
     }
 
     private fun updatePermissionStatus() {
         val isAccessibilityEnabled = MarketAccessibilityService.isServiceEnabled()
         val hasOverlayPermission = Settings.canDrawOverlays(this)
+        val hasNotificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == 
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
 
         findViewById<TextView>(R.id.tvAccessibilityStatus).apply {
             text = if (isAccessibilityEnabled) {
-                "Accessibility: Enabled"
+                "Accessibility: Enabled ✓"
             } else {
-                "Accessibility: Disabled"
+                "Accessibility: Disabled ✗"
             }
             setTextColor(if (isAccessibilityEnabled) {
                 getColor(R.color.success)
@@ -81,11 +116,26 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.tvOverlayStatus).apply {
             text = if (hasOverlayPermission) {
-                "Overlay Permission: Granted"
+                "Overlay Permission: Granted ✓"
             } else {
-                "Overlay Permission: Required"
+                "Overlay Permission: Required ✗"
             }
             setTextColor(if (hasOverlayPermission) {
+                getColor(R.color.success)
+            } else {
+                getColor(R.color.error)
+            })
+        }
+
+        // Update screen capture status
+        findViewById<TextView>(R.id.tvScreenCaptureStatus)?.apply {
+            val (resultCode, _) = MarketAccessibilityService.getMediaProjectionData()
+            text = if (resultCode != 0) {
+                "Screen Capture: Granted ✓"
+            } else {
+                "Screen Capture: Required ✗"
+            }
+            setTextColor(if (resultCode != 0) {
                 getColor(R.color.success)
             } else {
                 getColor(R.color.error)
@@ -106,7 +156,22 @@ class MainActivity : AppCompatActivity() {
             return false
         }
 
+        // Check screen capture permission
+        val (resultCode, _) = MarketAccessibilityService.getMediaProjectionData()
+        if (resultCode == 0) {
+            Toast.makeText(this, "Please grant Screen Capture permission for OCR", Toast.LENGTH_LONG).show()
+            requestMediaProjection()
+            return false
+        }
+
         return true
+    }
+
+    private fun requestMediaProjection() {
+        startActivityForResult(
+            mediaProjectionManager.createScreenCaptureIntent(),
+            MEDIA_PROJECTION_REQUEST_CODE
+        )
     }
 
     private fun startAutomationMode(mode: OperationMode) {
@@ -117,7 +182,13 @@ class MainActivity : AppCompatActivity() {
                 OperationMode.IDLE -> AutomationForegroundService.ACTION_STOP_MODE
             }
         }
-        startService(intent)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        
         Toast.makeText(this, "${mode.name} started", Toast.LENGTH_SHORT).show()
     }
 
@@ -150,12 +221,42 @@ class MainActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQUEST_CODE) {
-            if (Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "Overlay permission granted", Toast.LENGTH_SHORT).show()
-                updatePermissionStatus()
+        
+        when (requestCode) {
+            OVERLAY_PERMISSION_REQUEST_CODE -> {
+                if (Settings.canDrawOverlays(this)) {
+                    Toast.makeText(this, "Overlay permission granted", Toast.LENGTH_SHORT).show()
+                    updatePermissionStatus()
+                } else {
+                    Toast.makeText(this, "Overlay permission is required for floating controls", Toast.LENGTH_LONG).show()
+                }
+            }
+            
+            MEDIA_PROJECTION_REQUEST_CODE -> {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    // Store the result for the AccessibilityService to use
+                    MarketAccessibilityService.setMediaProjectionData(resultCode, data)
+                    Toast.makeText(this, "Screen capture permission granted", Toast.LENGTH_SHORT).show()
+                    updatePermissionStatus()
+                } else {
+                    Toast.makeText(this, "Screen capture permission denied - OCR will not work", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Notification permission granted", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Overlay permission is required for floating controls", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Notification permission denied - you won't see status updates", Toast.LENGTH_LONG).show()
             }
         }
     }
