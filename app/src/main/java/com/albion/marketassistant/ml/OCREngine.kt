@@ -16,6 +16,10 @@ class OCREngine {
     
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     
+    /**
+     * Recognize text from bitmap with proper memory management
+     * IMPORTANT: Bitmap is recycled after use to prevent memory leaks
+     */
     suspend fun recognizeText(
         bitmap: Bitmap,
         region: Rect,
@@ -24,15 +28,23 @@ class OCREngine {
         var croppedBitmap: Bitmap? = null
         
         try {
+            // Calculate safe crop region
             val x = maxOf(0, region.left)
             val y = maxOf(0, region.top)
-            val width = minOf(region.right - x, bitmap.width - x)
-            val height = minOf(region.bottom - y, bitmap.height - y)
+            val width = minOf(
+                region.right - x,
+                bitmap.width - x
+            )
+            val height = minOf(
+                region.bottom - y,
+                bitmap.height - y
+            )
             
             if (width <= 0 || height <= 0) {
                 return@withContext emptyList()
             }
             
+            // Crop bitmap to region
             croppedBitmap = Bitmap.createBitmap(bitmap, x, y, width, height)
             val image = InputImage.fromBitmap(croppedBitmap, 0)
             
@@ -49,12 +61,18 @@ class OCREngine {
             e.printStackTrace()
             emptyList()
         } finally {
+            // CRITICAL: Always recycle bitmap to prevent memory leaks
             croppedBitmap?.recycle()
             croppedBitmap = null
+            
+            // Suggest GC to prevent OOM
             System.gc()
         }
     }
     
+    /**
+     * Process screenshot with automatic cleanup
+     */
     suspend fun processScreenshot(
         screenshot: Bitmap,
         regions: List<Rect>
@@ -63,9 +81,12 @@ class OCREngine {
         
         try {
             for (region in regions) {
-                if (!isActive) break
+                if (!isActive) break // Check for cancellation
+                
                 val text = recognizeText(screenshot, region)
                 results[region] = text
+                
+                // Small delay between regions to prevent thermal throttling
                 kotlinx.coroutines.delay(50)
             }
         } catch (e: Exception) {
@@ -81,6 +102,11 @@ class OCREngine {
                 continuation.resume(result)
             }.addOnFailureListener { exception ->
                 continuation.resumeWithException(exception)
+            }
+            
+            continuation.invokeOnCancellation {
+                // Cancel the task if coroutine is cancelled
+                // Note: ML Kit tasks don't support direct cancellation
             }
         }
     }
@@ -114,13 +140,19 @@ class OCREngine {
         return results.sortedBy { it.boundingBox.top }
     }
     
+    /**
+     * Calculate confidence score for OCR result
+     * ML Kit doesn't provide direct confidence, so we estimate based on characteristics
+     */
     private fun calculateConfidence(line: com.google.mlkit.vision.text.Text.Line): Float {
-        var score = 0.9f
+        var score = 0.9f // Base confidence
         
+        // Reduce confidence for very short text (more prone to errors)
         if (line.text.length < 2) {
             score -= 0.2f
         }
         
+        // Increase confidence for numeric-only text
         if (line.text.all { it.isDigit() || it == ',' || it == '.' || it == ' ' }) {
             score += 0.05f
         }
@@ -130,6 +162,7 @@ class OCREngine {
     
     private fun extractInteger(text: String): Int? {
         return try {
+            // Remove common formatting characters
             val cleaned = text.replace(Regex("[^\\d-]"), "")
             if (cleaned.isNotEmpty()) {
                 cleaned.toInt()
@@ -148,6 +181,10 @@ class OCREngine {
             .toList()
     }
     
+    /**
+     * Extract price from OCR text with sanity validation
+     * Returns null if price seems invalid
+     */
     fun extractPrice(
         text: String,
         maxPrice: Int = Int.MAX_VALUE,
@@ -155,6 +192,7 @@ class OCREngine {
     ): Int? {
         val numbers = extractAllNumbers(text)
         
+        // Find the most likely price (largest number that's reasonable)
         for (num in numbers.sortedDescending()) {
             if (num in minPrice..maxPrice) {
                 return num
