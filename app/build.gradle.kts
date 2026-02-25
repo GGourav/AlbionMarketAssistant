@@ -69,8 +69,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // ML Kit for OCR
-    implementation("com.google.mlkit:text-recognition:19.0.0")
+    // ML Kit for OCR (Google Play Services version)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
