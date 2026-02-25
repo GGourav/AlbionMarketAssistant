@@ -191,7 +191,6 @@ class StateMachine(
                 return false
             }
         }
-
         return true
     }
 
@@ -210,7 +209,6 @@ class StateMachine(
 
             if (!isGameActive) {
                 val lostCount = windowLostCount.incrementAndGet()
-
                 updateState(StateType.VERIFY_GAME_WINDOW, "Game window check failed ($lostCount/${immersiveSettings.windowLostThreshold})")
 
                 if (lostCount >= immersiveSettings.windowLostThreshold) {
@@ -221,7 +219,6 @@ class StateMachine(
                 windowLostCount.set(0)
             }
         }
-
         return true
     }
 
@@ -245,15 +242,12 @@ class StateMachine(
     private fun checkStuckState(): Boolean {
         val errorSettings = calibration.errorRecovery
         if (!errorSettings.enableSmartRecovery) return false
-
         return statisticsManager?.isStuck(errorSettings.maxStateStuckTimeMs) ?: false
     }
 
     private suspend fun handleStuckRecovery() {
         val errorSettings = calibration.errorRecovery
-
         statisticsManager?.recordFailure("Stuck state detected")
-
         updateState(StateType.ERROR_STUCK_DETECTED, "Stuck detected - recovering")
 
         if (errorSettings.screenshotOnError) {
@@ -271,12 +265,8 @@ class StateMachine(
                 endOfListDetectionCount.set(0)
                 statisticsManager?.resetConsecutiveErrors()
             }
-            "pause" -> {
-                pause()
-            }
-            "stop" -> {
-                stop()
-            }
+            "pause" -> pause()
+            "stop" -> stop()
         }
     }
 
@@ -288,14 +278,11 @@ class StateMachine(
 
         if (lastPageText.isNotEmpty()) {
             val result = TextSimilarity.calculatePageMatchScore(
-                lastPageText,
-                currentText,
-                eolSettings.textSimilarityThreshold
+                lastPageText, currentText, eolSettings.textSimilarityThreshold
             )
 
             if (result.isLikelySamePage) {
                 val count = endOfListDetectionCount.incrementAndGet()
-
                 if (count >= eolSettings.identicalPageThreshold) {
                     return true
                 }
@@ -308,14 +295,17 @@ class StateMachine(
         return false
     }
 
+    // FIXED: Now actually captures screen and performs OCR
     private suspend fun captureAndOCRFirstLine(): String? {
-        return null
+        val bitmap = onScreenshotRequest?.invoke() ?: return null
+        val region = calibration.endOfList.getFirstLineOcrRegion()
+        val results = ocrEngine.recognizeText(bitmap, region)
+        return results.firstOrNull()?.text
     }
 
     private suspend fun handleEndOfList() {
         updateState(StateType.ERROR_END_OF_LIST, "End of list reached")
         onEndOfList?.invoke()
-
         statisticsManager?.exportSessionLog()
 
         if (calibration.swipeOverlap.enableScrollTracking) {
@@ -329,27 +319,17 @@ class StateMachine(
         }
     }
 
-    private suspend fun verifyUIElement(
-        x: Int,
-        y: Int,
-        expectedColorHex: String,
-        timeoutMs: Long
-    ): Boolean {
+    private suspend fun verifyUIElement(x: Int, y: Int, expectedColorHex: String, timeoutMs: Long): Boolean {
         val startTime = System.currentTimeMillis()
-
         while (System.currentTimeMillis() - startTime < timeoutMs) {
-            while (isPaused) {
-                delay(100)
-            }
+            while (isPaused) { delay(100) }
             delay(100)
         }
-
         return true
     }
 
     private suspend fun handleUnexpectedPopup() {
         val safety = calibration.safety
-
         if (!safety.autoDismissErrors) return
 
         updateState(StateType.HANDLE_ERROR_POPUP, "Handling error popup")
@@ -368,7 +348,6 @@ class StateMachine(
 
         performTapWithRandomization(closeX, closeY)
         delay(300L.withDelays())
-
         uiInteractor.dismissKeyboard()
         delay(300L.withDelays())
     }
@@ -378,12 +357,8 @@ class StateMachine(
         return uiInteractor.performTap(x, y, duration)
     }
 
-    private fun performSwipeWithRandomization(
-        startX: Int, startY: Int,
-        endX: Int, endY: Int
-    ): Boolean {
+    private fun performSwipeWithRandomization(startX: Int, startY: Int, endX: Int, endY: Int): Boolean {
         val swipeSettings = calibration.swipeOverlap
-
         val adjustedStartY = if (swipeSettings.enableSwipeOverlap) {
             startY + (swipeSettings.overlapRowCount * calibration.createMode.rowYOffset)
         } else {
@@ -393,7 +368,6 @@ class StateMachine(
         val distance = abs(endY - adjustedStartY)
         val randomizedDistance = randomizationHelper.getRandomizedSwipeDistance(distance)
         val actualEndY = adjustedStartY - randomizedDistance
-
         val duration = randomizationHelper.getRandomizedDuration(calibration.global.swipeDurationMs.toLong())
 
         return uiInteractor.performSwipe(startX, adjustedStartY, endX, actualEndY, duration)
@@ -435,10 +409,7 @@ class StateMachine(
 
     data class PriceValidationResult(val isValid: Boolean, val message: String)
 
-    private suspend fun executeWithRetry(
-        maxRetries: Int,
-        action: suspend () -> Boolean
-    ): Boolean {
+    private suspend fun executeWithRetry(maxRetries: Int, action: suspend () -> Boolean): Boolean {
         var attempts = 0
 
         while (attempts < maxRetries) {
@@ -457,7 +428,6 @@ class StateMachine(
 
             delay(randomizationHelper.getRandomDelay(300, 700))
         }
-
         return false
     }
 
@@ -482,9 +452,7 @@ class StateMachine(
             val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
 
             updateState(StateType.EXECUTE_TAP, "Tapping row $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(rowX, rowY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(rowX, rowY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap row after ${safety.maxRetries} retries")
                 statisticsManager?.recordFailure("Tap row failed")
                 handleUnexpectedPopup()
@@ -495,9 +463,7 @@ class StateMachine(
             delay(timing.popupOpenWaitMs.withDelays())
 
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.priceInputX, config.priceInputY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.priceInputX, config.priceInputY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap price box")
                 statisticsManager?.recordFailure("Tap price box failed")
                 handleUnexpectedPopup()
@@ -506,6 +472,7 @@ class StateMachine(
 
             delay(100L.withDelays())
 
+            // FIXED: Now uses configured default price
             val priceToInject = calculatePrice()
             val validation = validatePrice(priceToInject)
 
@@ -531,7 +498,6 @@ class StateMachine(
             }
 
             lastKnownPrice = priceToInject
-
             delay(timing.textInputDelayMs.withDelays())
 
             updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
@@ -539,9 +505,7 @@ class StateMachine(
             delay(timing.keyboardDismissDelayMs.withDelays())
 
             updateState(StateType.EXECUTE_BUTTON, "Creating order")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.createButtonX, config.createButtonY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.createButtonX, config.createButtonY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap create button")
                 statisticsManager?.recordFailure("Tap create button failed")
                 handleUnexpectedPopup()
@@ -552,11 +516,9 @@ class StateMachine(
 
             updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
             performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-
             delay(timing.popupCloseWaitMs.withDelays())
 
             statisticsManager?.recordSuccess("CREATE", priceToInject)
-
             handleRowIteration(config.maxRowsPerScreen, timing)
 
         } catch (e: Exception) {
@@ -587,9 +549,7 @@ class StateMachine(
             val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
 
             updateState(StateType.EXECUTE_TAP, "Tapping edit button $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(editX, editY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(editX, editY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap edit button")
                 statisticsManager?.recordFailure("Tap edit button failed")
                 handleUnexpectedPopup()
@@ -600,9 +560,7 @@ class StateMachine(
             delay(timing.popupOpenWaitMs.withDelays())
 
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.priceInputX, config.priceInputY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.priceInputX, config.priceInputY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap price box")
                 statisticsManager?.recordFailure("Tap price box failed")
                 handleUnexpectedPopup()
@@ -636,7 +594,6 @@ class StateMachine(
             }
 
             lastKnownPrice = priceToInject
-
             delay(timing.textInputDelayMs.withDelays())
 
             updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
@@ -644,9 +601,7 @@ class StateMachine(
             delay(timing.keyboardDismissDelayMs.withDelays())
 
             updateState(StateType.EXECUTE_BUTTON, "Updating order")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.updateButtonX, config.updateButtonY)
-            }) {
+            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.updateButtonX, config.updateButtonY) }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap update button")
                 statisticsManager?.recordFailure("Tap update button failed")
                 handleUnexpectedPopup()
@@ -657,11 +612,9 @@ class StateMachine(
 
             updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
             performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-
             delay(timing.popupCloseWaitMs.withDelays())
 
             statisticsManager?.recordSuccess("EDIT", priceToInject)
-
             handleRowIteration(5, timing)
 
         } catch (e: Exception) {
@@ -671,27 +624,25 @@ class StateMachine(
         }
     }
 
+    // FIXED: Now uses configured default price
     private fun calculatePrice(): Int {
-        val basePrice = lastKnownPrice ?: 1000
-
+        val basePrice = lastKnownPrice ?: calibration.createMode.defaultBuyPrice
         val trend = statisticsManager?.getPriceTrend("current") ?: 0
+        val increment = calibration.createMode.priceIncrement
 
         return when {
-            trend > 0 -> basePrice + 2
-            trend < 0 -> basePrice + 1
-            else -> basePrice + 1
+            trend > 0 -> basePrice + (increment * 2)
+            trend < 0 -> basePrice + increment
+            else -> basePrice + increment
         }
     }
 
     private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
         if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
             updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
-
             performSwipeWithRandomization(
-                timing.swipeStartX,
-                timing.swipeStartY,
-                timing.swipeEndX,
-                timing.swipeEndY
+                timing.swipeStartX, timing.swipeStartY,
+                timing.swipeEndX, timing.swipeEndY
             )
 
             val settleTime = if (calibration.swipeOverlap.enableSwipeOverlap) {
@@ -705,7 +656,6 @@ class StateMachine(
 
     private fun updateState(stateType: StateType, message: String = "") {
         val stats = statisticsManager?.getStatistics() ?: SessionStatistics()
-
         statisticsManager?.updateState(stateType.name)
 
         val state = AutomationState(
@@ -724,7 +674,6 @@ class StateMachine(
 
         _stateFlow.value = state
         onStateChange?.invoke(state)
-
         onStatisticsUpdate?.invoke(stats)
     }
 
