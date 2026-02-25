@@ -915,6 +915,66 @@
                     android:padding="8dp"
                     android:hint="Max cycles safety limit (default: 500)"/>
 
+                <!-- NEW: First Line OCR Region -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="First Line OCR Region (for end-of-list detection)"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Region to scan for comparing page content"
+                    android:textSize="10sp"
+                    android:textColor="#666666"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/firstLineOcrLeft"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Left"/>
+                    <EditText android:id="@+id/firstLineOcrTop"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Top"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/firstLineOcrRight"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Right"/>
+                    <EditText android:id="@+id/firstLineOcrBottom"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Bottom"/>
+                </LinearLayout>
+
                 <!-- Game Window Verification -->
                 <TextView
                     android:layout_width="wrap_content"
