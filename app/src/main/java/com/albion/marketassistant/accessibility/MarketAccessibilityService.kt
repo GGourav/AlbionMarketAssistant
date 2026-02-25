@@ -83,14 +83,12 @@ class MarketAccessibilityService : AccessibilityService() {
                     moveTo(x.toFloat(), y.toFloat()) 
                 }
                 
-                // Use minimum 150ms for heavy 3D game engines
-                val duration = min(durationMs * 1_000_000L, 300_000_000L) // nanoseconds, max 300ms
+                val duration = min(durationMs * 1_000_000L, 300_000_000L)
                 
                 val gesture = GestureDescription.Builder()
                     .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
                     .build()
                 
-                // Run on main thread and wait for callback
                 val latch = java.util.concurrent.CountDownLatch(1)
                 
                 mainHandler.post {
@@ -108,7 +106,6 @@ class MarketAccessibilityService : AccessibilityService() {
                     }
                 }
                 
-                // Wait for gesture to complete (max 2 seconds)
                 latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
                 success
             } catch (e: Exception) {
@@ -160,11 +157,9 @@ class MarketAccessibilityService : AccessibilityService() {
             return try {
                 val rootNode = rootInActiveWindow ?: return false
                 
-                // Find the focused input field
                 val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 
                 if (focusNode != null) {
-                    // Method 1: Use ACTION_SET_TEXT (no keyboard popup)
                     val arguments = android.os.Bundle()
                     arguments.putCharSequence(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, 
@@ -178,7 +173,6 @@ class MarketAccessibilityService : AccessibilityService() {
                     return result
                 }
                 
-                // Method 2: Try to find any editable field
                 val editableNodes = findEditableNodes(rootNode)
                 for (node in editableNodes) {
                     val arguments = android.os.Bundle()
@@ -221,7 +215,6 @@ class MarketAccessibilityService : AccessibilityService() {
         
         override fun dismissKeyboard(): Boolean {
             return try {
-                // Try to dismiss keyboard using back action
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 true
             } catch (e: Exception) {
