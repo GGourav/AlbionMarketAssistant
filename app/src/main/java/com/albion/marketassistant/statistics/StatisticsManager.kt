@@ -1,738 +1,347 @@
-package com.albion.marketassistant.accessibility
+package com.albion.marketassistant.statistics
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Rect
+import android.os.Environment
 import com.albion.marketassistant.data.*
-import com.albion.marketassistant.ml.ColorDetector
-import com.albion.marketassistant.ml.OCREngine
-import com.albion.marketassistant.statistics.StatisticsManager
-import com.albion.marketassistant.util.DeviceUtils
-import com.albion.marketassistant.util.RandomizationHelper
-import com.albion.marketassistant.util.TextSimilarity
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.abs
 
-class StateMachine(
-    private val scope: CoroutineScope,
-    private val calibration: CalibrationData,
-    private val uiInteractor: UIInteractor,
-    private val context: Context? = null
+class StatisticsManager(
+    private val context: Context,
+    private val scope: CoroutineScope
 ) {
+    private val _statistics = MutableStateFlow(SessionStatistics())
+    val statistics: StateFlow<SessionStatistics> = _statistics
 
-    private val _stateFlow = MutableStateFlow<AutomationState>(AutomationState(StateType.IDLE))
-    val stateFlow: StateFlow<AutomationState> = _stateFlow
+    private val sessionId = System.currentTimeMillis()
 
-    private var isRunning = false
-    private var isPaused = false
-    private var currentMode = OperationMode.IDLE
-    private var currentRowIndex = 0
-    private var loopJob: Job? = null
-    private var retryCount = AtomicInteger(0)
-    private var lastKnownPrice: Int? = null
+    private val totalCycles = AtomicInteger(0)
+    private val successfulOps = AtomicInteger(0)
+    private val failedOps = AtomicInteger(0)
+    private val priceUpdates = AtomicInteger(0)
+    private val ordersCreated = AtomicInteger(0)
+    private val ordersEdited = AtomicInteger(0)
+    private val errorsEncountered = AtomicInteger(0)
+    private val consecutiveErrors = AtomicInteger(0)
+    private val timeSavedMs = AtomicLong(0)
+    private val estimatedProfit = AtomicLong(0)
 
-    private var totalCycleCount = AtomicInteger(0)
-    private var lastPageText = ""
-    private var endOfListDetectionCount = AtomicInteger(0)
+    private var currentState: String = ""
+    private var stateEnterTime: Long = 0
+    private var lastCycleTime: Long = System.currentTimeMillis()
+    private val sessionStartTime = System.currentTimeMillis()
 
-    private var windowLostCount = AtomicInteger(0)
-    private var lastWindowCheckTime = AtomicLong(0)
+    private val priceHistoryBuffer = mutableListOf<PriceHistoryEntry>()
 
-    private val ocrEngine = OCREngine()
-    private val colorDetector = ColorDetector()
-
-    private val randomizationHelper = RandomizationHelper(calibration.antiDetection)
-    private val deviceUtils = context?.let { DeviceUtils(it) }
-    private var statisticsManager: StatisticsManager? = null
-
-    var onScreenCaptureRequest: (( (Bitmap?) -> Unit ) -> Unit)? = null
-
-    var onStateChange: ((AutomationState) -> Unit)? = null
-    var onError: ((String) -> Unit)? = null
-    var onPriceSanityError: ((String) -> Unit)? = null
-    var onEndOfList: (() -> Unit)? = null
-    var onWindowLost: (() -> Unit)? = null
-    var onStatisticsUpdate: ((SessionStatistics) -> Unit)? = null
-    var onScreenshotRequest: (() -> Bitmap?)? = null
-
-    init {
-        context?.let {
-            statisticsManager = StatisticsManager(it, scope)
+    private val screenshotDir: File by lazy {
+        File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "screenshots").apply {
+            mkdirs()
         }
     }
 
-    fun startMode(mode: OperationMode) {
-        if (isRunning) {
-            onError?.invoke("Already running")
-            return
-        }
-        isRunning = true
-        isPaused = false
-        currentMode = mode
-        currentRowIndex = 0
-        retryCount.set(0)
-        lastKnownPrice = null
-        lastPageText = ""
-        endOfListDetectionCount.set(0)
-        windowLostCount.set(0)
-        totalCycleCount.set(0)
-
-        statisticsManager?.resetSession()
-        statisticsManager?.updateState(StateType.IDLE.name)
-
-        loopJob = scope.launch { mainLoop() }
-    }
-
-    fun pause() {
-        isPaused = true
-        statisticsManager?.updateState(StateType.PAUSED.name)
-        updateState(StateType.PAUSED, "Paused")
-    }
-
-    fun resume() {
-        isPaused = false
-        windowLostCount.set(0)
-        statisticsManager?.updateState(StateType.IDLE.name)
-        updateState(StateType.IDLE, "Resumed")
-    }
-
-    fun isPaused(): Boolean = isPaused
-
-    fun stop() {
-        isRunning = false
-        isPaused = false
-        loopJob?.cancel()
-        currentMode = OperationMode.IDLE
-
-        scope.launch {
-            statisticsManager?.exportSessionLog()
-            statisticsManager?.flushPriceHistory()
-        }
-
-        _stateFlow.value = AutomationState(StateType.IDLE)
-    }
-
-    private fun Long.withDelays(): Long {
-        val withLag = (this * calibration.global.networkLagMultiplier).toLong()
-        return randomizationHelper.getRandomizedDelay(withLag)
-    }
-
-    private suspend fun mainLoop() {
-        try {
-            while (isRunning) {
-                while (isPaused) {
-                    delay(100)
-                }
-
-                if (!checkBatteryOptimization()) {
-                    pause()
-                    updateState(StateType.ERROR_BATTERY_LOW, "Battery too low - paused")
-                    continue
-                }
-
-                if (!verifyGameWindow()) {
-                    continue
-                }
-
-                if (checkStuckState()) {
-                    handleStuckRecovery()
-                    continue
-                }
-
-                when (currentMode) {
-                    OperationMode.NEW_ORDER_SWEEPER -> executeCreateOrderLoop()
-                    OperationMode.ORDER_EDITOR -> executeEditOrderLoop()
-                    OperationMode.IDLE -> return
-                }
-
-                val cycle = totalCycleCount.incrementAndGet()
-                statisticsManager?.recordCycle()
-                currentRowIndex++
-
-                if (checkEndOfList()) {
-                    handleEndOfList()
-                    continue
-                }
-
-                if (cycle >= calibration.endOfList.maxCyclesBeforeStop) {
-                    updateState(StateType.ERROR_END_OF_LIST, "Max cycles reached ($cycle)")
-                    handleEndOfList()
-                    continue
-                }
-
-                updateState(StateType.COOLDOWN, "Cooldown")
-                val cooldownDelay = randomizationHelper.getRandomizedDelay(calibration.global.cycleCooldownMs)
-
-                if (randomizationHelper.shouldAddHesitation(cycle % 20)) {
-                    delay(randomizationHelper.getHesitationDelay())
-                }
-
-                delay(cooldownDelay)
-            }
-        } catch (e: CancellationException) {
-            // Normal cancellation
-        } catch (e: Exception) {
-            isRunning = false
-            statisticsManager?.recordFailure("Main loop error: ${e.message}")
-            onError?.invoke("Error: ${e.message}")
+    private val logDir: File by lazy {
+        File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "logs").apply {
+            mkdirs()
         }
     }
 
-    private suspend fun checkBatteryOptimization(): Boolean {
-        val batterySettings = calibration.battery
-        if (!batterySettings.enableBatteryOptimization) return true
+    fun recordSuccess(operationType: String, price: Int? = null) {
+        successfulOps.incrementAndGet()
+        consecutiveErrors.set(0)
 
-        deviceUtils?.let { utils ->
-            if (utils.isBatteryLow(batterySettings.pauseOnBatteryBelow) && !utils.isCharging()) {
-                return false
-            }
+        when (operationType) {
+            "CREATE" -> ordersCreated.incrementAndGet()
+            "EDIT" -> ordersEdited.incrementAndGet()
+            "PRICE_UPDATE" -> priceUpdates.incrementAndGet()
         }
 
-        return true
+        price?.let {
+            estimatedProfit.addAndGet(calculateEstimateProfit(it))
+            timeSavedMs.addAndGet(5000)
+        }
+
+        updateStatistics()
     }
 
-    private suspend fun verifyGameWindow(): Boolean {
-        val immersiveSettings = calibration.immersiveMode
-        if (!immersiveSettings.enableWindowVerification) return true
+    fun recordFailure(errorType: String) {
+        failedOps.incrementAndGet()
+        errorsEncountered.incrementAndGet()
+        consecutiveErrors.incrementAndGet()
 
-        val now = System.currentTimeMillis()
-        if (now - lastWindowCheckTime.get() < immersiveSettings.windowCheckIntervalMs) {
-            return true
-        }
-        lastWindowCheckTime.set(now)
-
-        deviceUtils?.let { utils ->
-            val isGameActive = utils.isAppInForeground(immersiveSettings.gamePackageName)
-
-            if (!isGameActive) {
-                val lostCount = windowLostCount.incrementAndGet()
-
-                updateState(StateType.VERIFY_GAME_WINDOW, "Game window check failed ($lostCount/${immersiveSettings.windowLostThreshold})")
-
-                if (lostCount >= immersiveSettings.windowLostThreshold) {
-                    handleWindowLost(immersiveSettings)
-                    return false
-                }
-            } else {
-                windowLostCount.set(0)
-            }
-        }
-
-        return true
+        logError(errorType)
+        updateStatistics()
     }
 
-    private suspend fun handleWindowLost(settings: ImmersiveModeSettings) {
-        statisticsManager?.recordFailure("Game window lost")
-
-        when (settings.actionOnWindowLost) {
-            "pause" -> {
-                updateState(StateType.ERROR_WINDOW_LOST, "Game window lost - paused")
-                onWindowLost?.invoke()
-                pause()
-            }
-            "stop" -> {
-                updateState(StateType.ERROR_WINDOW_LOST, "Game window lost - stopped")
-                onWindowLost?.invoke()
-                stop()
-            }
-        }
+    fun recordCycle() {
+        totalCycles.incrementAndGet()
+        lastCycleTime = System.currentTimeMillis()
+        updateStatistics()
     }
 
-    private fun checkStuckState(): Boolean {
-        val errorSettings = calibration.errorRecovery
-        if (!errorSettings.enableSmartRecovery) return false
-
-        return statisticsManager?.isStuck(errorSettings.maxStateStuckTimeMs) ?: false
-    }
-
-    private suspend fun handleStuckRecovery() {
-        val errorSettings = calibration.errorRecovery
-
-        statisticsManager?.recordFailure("Stuck state detected")
-
-        updateState(StateType.ERROR_STUCK_DETECTED, "Stuck detected - recovering")
-
-        if (errorSettings.screenshotOnError) {
-            onScreenshotRequest?.invoke()?.let { bitmap ->
-                statisticsManager?.saveScreenshot(bitmap, "stuck")
-            }
-        }
-
-        when (errorSettings.actionOnStuck) {
-            "restart" -> {
-                updateState(StateType.RECOVERING, "Auto-restarting...")
-                delay(errorSettings.autoRestartDelayMs)
-                currentRowIndex = 0
-                lastPageText = ""
-                endOfListDetectionCount.set(0)
-                statisticsManager?.resetConsecutiveErrors()
-            }
-            "pause" -> {
-                pause()
-            }
-            "stop" -> {
-                stop()
-            }
-        }
-    }
-
-    private suspend fun checkEndOfList(): Boolean {
-        val eolSettings = calibration.endOfList
-        if (!eolSettings.enableEndOfListDetection) return false
-
-        val currentText = captureAndOCRFirstLine() ?: return false
-
-        if (lastPageText.isNotEmpty()) {
-            val result = TextSimilarity.calculatePageMatchScore(
-                lastPageText,
-                currentText,
-                eolSettings.textSimilarityThreshold
-            )
-
-            if (result.isLikelySamePage) {
-                val count = endOfListDetectionCount.incrementAndGet()
-
-                if (count >= eolSettings.identicalPageThreshold) {
-                    return true
-                }
-            } else {
-                endOfListDetectionCount.set(0)
-            }
-        }
-
-        lastPageText = currentText
-        return false
-    }
-
-    private suspend fun captureAndOCRFirstLine(): String? {
-        return null
-    }
-
-    private suspend fun handleEndOfList() {
-        updateState(StateType.ERROR_END_OF_LIST, "End of list reached")
-        onEndOfList?.invoke()
-
-        statisticsManager?.exportSessionLog()
-
-        if (calibration.swipeOverlap.enableScrollTracking) {
-            currentRowIndex = 0
-            lastPageText = ""
-            endOfListDetectionCount.set(0)
-            updateState(StateType.COOLDOWN, "Restarting from top...")
-            delay(2000)
-        } else {
-            stop()
-        }
-    }
-
-    private suspend fun verifyUIElement(
-        x: Int,
-        y: Int,
-        expectedColorHex: String,
-        timeoutMs: Long
-    ): Boolean {
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            while (isPaused) {
-                delay(100)
-            }
-            delay(100)
-        }
-
-        return true
-    }
-
-    private suspend fun handleUnexpectedPopup() {
-        val safety = calibration.safety
-
-        if (!safety.autoDismissErrors) return
-
-        updateState(StateType.HANDLE_ERROR_POPUP, "Handling error popup")
-        statisticsManager?.updateState(StateType.HANDLE_ERROR_POPUP.name)
-
-        val closeX = if (currentMode == OperationMode.NEW_ORDER_SWEEPER) {
-            calibration.createMode.closeButtonX
-        } else {
-            calibration.editMode.closeButtonX
-        }
-        val closeY = if (currentMode == OperationMode.NEW_ORDER_SWEEPER) {
-            calibration.createMode.closeButtonY
-        } else {
-            calibration.editMode.closeButtonY
-        }
-
-        performTapWithRandomization(closeX, closeY)
-        delay(300L.withDelays())
-
-        uiInteractor.dismissKeyboard()
-        delay(300L.withDelays())
-    }
-
-    private fun performTapWithRandomization(x: Int, y: Int): Boolean {
-        val duration = randomizationHelper.getRandomizedDuration(calibration.global.tapDurationMs)
-        return uiInteractor.performTap(x, y, duration)
-    }
-
-    private fun performSwipeWithRandomization(
-        startX: Int, startY: Int,
-        endX: Int, endY: Int
-    ): Boolean {
-        val swipeSettings = calibration.swipeOverlap
-
-        val adjustedStartY = if (swipeSettings.enableSwipeOverlap) {
-            startY + (swipeSettings.overlapRowCount * calibration.createMode.rowYOffset)
-        } else {
-            startY
-        }
-
-        val distance = abs(endY - adjustedStartY)
-        val randomizedDistance = randomizationHelper.getRandomizedSwipeDistance(distance)
-        val actualEndY = adjustedStartY - randomizedDistance
-
-        val duration = randomizationHelper.getRandomizedDuration(calibration.global.swipeDurationMs.toLong())
-
-        return uiInteractor.performSwipe(startX, adjustedStartY, endX, actualEndY, duration)
-    }
-
-    private fun validatePrice(price: Int?): PriceValidationResult {
-        if (price == null) {
-            return PriceValidationResult(false, "Could not read price")
-        }
-
-        val safety = calibration.safety
-
-        if (price < safety.minPriceCap) {
-            return PriceValidationResult(false, "Price below minimum: $price")
-        }
-
-        if (price > safety.maxPriceCap) {
-            return PriceValidationResult(false, "Price exceeds cap: $price > ${safety.maxPriceCap}")
-        }
-
-        if (safety.enableOcrSanityCheck && lastKnownPrice != null) {
-            val changePercent = abs(price - lastKnownPrice!!).toFloat() / lastKnownPrice!!
-            if (changePercent > safety.maxPriceChangePercent) {
-                val percentInt = (changePercent * 100).toInt()
-                return PriceValidationResult(false, "Price change too large: $percentInt%")
-            }
-        }
-
-        statisticsManager?.let { stats ->
-            if (calibration.priceHistory.enableAnomalyDetection) {
-                if (stats.detectPriceAnomaly("current", price)) {
-                    return PriceValidationResult(false, "Price anomaly detected")
-                }
-            }
-        }
-
-        return PriceValidationResult(true, "OK")
-    }
-
-    data class PriceValidationResult(val isValid: Boolean, val message: String)
-
-    private suspend fun executeWithRetry(
-        maxRetries: Int,
-        action: suspend () -> Boolean
-    ): Boolean {
-        var attempts = 0
-
-        while (attempts < maxRetries) {
-            if (action()) {
-                retryCount.set(0)
-                return true
-            }
-
-            attempts++
-            retryCount.set(attempts)
-            statisticsManager?.recordFailure("Retry attempt $attempts")
-
-            if (attempts >= maxRetries) {
-                handleUnexpectedPopup()
-            }
-
-            delay(randomizationHelper.getRandomDelay(300, 700))
-        }
-
-        return false
-    }
-
-    private suspend fun executeCreateOrderLoop() {
-        try {
-            val config = calibration.createMode
-            val timing = calibration.global
-            val safety = calibration.safety
-            val errorSettings = calibration.errorRecovery
-
-            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
-
-            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
-                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
-                delay(errorSettings.autoRestartDelayMs)
-                currentRowIndex = 0
-                statisticsManager?.resetConsecutiveErrors()
-                return
-            }
-
-            val rowX = config.firstRowX
-            val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
-
-            updateState(StateType.EXECUTE_TAP, "Tapping row $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(rowX, rowY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap row after ${safety.maxRetries} retries")
-                statisticsManager?.recordFailure("Tap row failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
-            delay(timing.popupOpenWaitMs.withDelays())
-
-            updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.priceInputX, config.priceInputY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
-                statisticsManager?.recordFailure("Tap price box failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(100L.withDelays())
-
-            val priceToInject = calculatePrice()
-            val validation = validatePrice(priceToInject)
-
-            if (!validation.isValid) {
-                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
-                statisticsManager?.recordFailure("Price validation failed: ${validation.message}")
-                onPriceSanityError?.invoke(validation.message)
-                handleUnexpectedPopup()
-                return
-            }
-
-            statisticsManager?.recordPrice("item_$currentRowIndex", priceToInject, "CREATE", true)
-
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
-            uiInteractor.clearTextField()
-            delay(50L.withDelays())
-
-            if (!uiInteractor.injectText(priceToInject.toString())) {
-                updateState(StateType.ERROR_RETRY, "Failed to inject text")
-                statisticsManager?.recordFailure("Text injection failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            lastKnownPrice = priceToInject
-
-            delay(timing.textInputDelayMs.withDelays())
-
-            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
-            uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs.withDelays())
-
-            updateState(StateType.EXECUTE_BUTTON, "Creating order")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.createButtonX, config.createButtonY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap create button")
-                statisticsManager?.recordFailure("Tap create button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(timing.confirmationWaitMs.withDelays())
-
-            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
-            performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-
-            delay(timing.popupCloseWaitMs.withDelays())
-
-            statisticsManager?.recordSuccess("CREATE", priceToInject)
-
-            handleRowIteration(config.maxRowsPerScreen, timing)
-
-        } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
-            statisticsManager?.recordFailure("Exception: ${e.message}")
-            handleUnexpectedPopup()
-        }
-    }
-
-    private suspend fun executeEditOrderLoop() {
-        try {
-            val config = calibration.editMode
-            val timing = calibration.global
-            val safety = calibration.safety
-            val errorSettings = calibration.errorRecovery
-
-            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
-
-            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
-                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
-                delay(errorSettings.autoRestartDelayMs)
-                currentRowIndex = 0
-                statisticsManager?.resetConsecutiveErrors()
-                return
-            }
-
-            val editX = config.editButtonX
-            val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
-
-            updateState(StateType.EXECUTE_TAP, "Tapping edit button $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(editX, editY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap edit button")
-                statisticsManager?.recordFailure("Tap edit button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
-            delay(timing.popupOpenWaitMs.withDelays())
-
-            updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.priceInputX, config.priceInputY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
-                statisticsManager?.recordFailure("Tap price box failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(100L.withDelays())
-
-            val priceToInject = calculatePrice()
-            val validation = validatePrice(priceToInject)
-
-            if (!validation.isValid) {
-                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
-                statisticsManager?.recordFailure("Price validation failed: ${validation.message}")
-                onPriceSanityError?.invoke(validation.message)
-                handleUnexpectedPopup()
-                return
-            }
-
-            statisticsManager?.recordPrice("item_$currentRowIndex", priceToInject, "EDIT", true)
-
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
-            uiInteractor.clearTextField()
-            delay(50L.withDelays())
-
-            if (!uiInteractor.injectText(priceToInject.toString())) {
-                updateState(StateType.ERROR_RETRY, "Failed to inject text")
-                statisticsManager?.recordFailure("Text injection failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            lastKnownPrice = priceToInject
-
-            delay(timing.textInputDelayMs.withDelays())
-
-            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
-            uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs.withDelays())
-
-            updateState(StateType.EXECUTE_BUTTON, "Updating order")
-            if (!executeWithRetry(safety.maxRetries) {
-                performTapWithRandomization(config.updateButtonX, config.updateButtonY)
-            }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap update button")
-                statisticsManager?.recordFailure("Tap update button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(timing.confirmationWaitMs.withDelays())
-
-            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
-            performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-
-            delay(timing.popupCloseWaitMs.withDelays())
-
-            statisticsManager?.recordSuccess("EDIT", priceToInject)
-
-            handleRowIteration(5, timing)
-
-        } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
-            statisticsManager?.recordFailure("Exception: ${e.message}")
-            handleUnexpectedPopup()
-        }
-    }
-
-    private fun calculatePrice(): Int {
-        val basePrice = lastKnownPrice ?: 1000
-
-        val trend = statisticsManager?.getPriceTrend("current") ?: 0
-
-        return when {
-            trend > 0 -> basePrice + 2
-            trend < 0 -> basePrice + 1
-            else -> basePrice + 1
-        }
-    }
-
-    private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
-        if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
-
-            performSwipeWithRandomization(
-                timing.swipeStartX,
-                timing.swipeStartY,
-                timing.swipeEndX,
-                timing.swipeEndY
-            )
-
-            val settleTime = if (calibration.swipeOverlap.enableSwipeOverlap) {
-                calibration.swipeOverlap.swipeSettleTimeMs
-            } else {
-                300L
-            }
-            delay(randomizationHelper.getRandomizedDelay(settleTime))
-        }
-    }
-
-    private fun updateState(stateType: StateType, message: String = "") {
-        val stats = statisticsManager?.getStatistics() ?: SessionStatistics()
-
-        statisticsManager?.updateState(stateType.name)
-
-        val state = AutomationState(
-            stateType = stateType,
-            mode = currentMode,
-            currentRowIndex = currentRowIndex,
-            errorMessage = if (stateType.name.startsWith("ERROR")) message else null,
-            isPaused = isPaused,
-            retryCount = retryCount.get(),
-            lastPrice = lastKnownPrice,
-            statistics = stats,
-            lastPageText = lastPageText,
-            endOfListCount = endOfListDetectionCount.get(),
-            windowLostCount = windowLostCount.get()
+    fun recordPrice(itemId: String, price: Int, mode: String, successful: Boolean) {
+        val entry = PriceHistoryEntry(
+            itemId = itemId,
+            price = price,
+            timestamp = System.currentTimeMillis(),
+            sourceMode = mode,
+            wasSuccessful = successful,
+            sessionId = sessionId
         )
 
-        _stateFlow.value = state
-        onStateChange?.invoke(state)
+        synchronized(priceHistoryBuffer) {
+            priceHistoryBuffer.add(entry)
 
-        onStatisticsUpdate?.invoke(stats)
+            if (priceHistoryBuffer.size > 1000) {
+                val entriesToFlush = priceHistoryBuffer.toList()
+                priceHistoryBuffer.clear()
+                scope.launch(Dispatchers.IO) {
+                    writePriceHistoryToFile(entriesToFlush)
+                }
+            }
+        }
     }
 
-    fun getStatistics(): SessionStatistics {
-        return statisticsManager?.getStatistics() ?: SessionStatistics()
+    private suspend fun writePriceHistoryToFile(entries: List<PriceHistoryEntry>) {
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+            val file = File(logDir, "price_history_${timestamp}.csv")
+
+            val exists = file.exists()
+            file.appendText(buildString {
+                if (!exists) {
+                    appendLine("Item,Price,Timestamp,Mode,Success,SessionId")
+                }
+                entries.forEach { entry ->
+                    appendLine("${entry.itemId},${entry.price},${entry.timestamp},${entry.sourceMode},${entry.wasSuccessful},${entry.sessionId}")
+                }
+            })
+        } catch (e: Exception) {
+            logError("Failed to write price history: ${e.message}")
+        }
     }
 
-    suspend fun exportSessionLog() {
-        statisticsManager?.exportSessionLog()
+    fun updateState(state: String) {
+        if (currentState != state) {
+            currentState = state
+            stateEnterTime = System.currentTimeMillis()
+        }
+    }
+
+    fun isStuck(maxStuckTimeMs: Long): Boolean {
+        if (currentState.isEmpty() || stateEnterTime == 0L) return false
+        return System.currentTimeMillis() - stateEnterTime > maxStuckTimeMs
+    }
+
+    fun getConsecutiveErrors(): Int = consecutiveErrors.get()
+
+    fun resetConsecutiveErrors() {
+        consecutiveErrors.set(0)
+    }
+
+    fun saveScreenshot(bitmap: Bitmap, prefix: String = "error"): File? {
+        return try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val file = File(screenshotDir, "${prefix}_${timestamp}.png")
+
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+
+            logEvent("Screenshot saved: ${file.absolutePath}")
+            file
+        } catch (e: Exception) {
+            logError("Failed to save screenshot: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun exportSessionLog(): File? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val file = File(logDir, "session_${timestamp}.csv")
+
+            val stats = _statistics.value
+
+            file.writeText(buildString {
+                appendLine("Albion Market Assistant - Session Log")
+                appendLine("Session ID,$sessionId")
+                appendLine("Start Time,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(sessionStartTime))}")
+                appendLine("End Time,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+                appendLine()
+                appendLine("Statistics")
+                appendLine("Total Cycles,${stats.totalCycles}")
+                appendLine("Successful Operations,${stats.successfulOperations}")
+                appendLine("Failed Operations,${stats.failedOperations}")
+                appendLine("Success Rate,${(stats.getSuccessRate() * 100).toInt()}%")
+                appendLine("Price Updates,${stats.priceUpdates}")
+                appendLine("Orders Created,${stats.ordersCreated}")
+                appendLine("Orders Edited,${stats.ordersEdited}")
+                appendLine("Errors Encountered,${stats.errorsEncountered}")
+                appendLine("Session Duration,${stats.getSessionDurationFormatted()}")
+                appendLine("Estimated Time Saved,${stats.timeSavedMs / 1000}s")
+                appendLine("Estimated Profit,${stats.estimatedProfitSilver} silver")
+                appendLine()
+                appendLine("Price History (last 50 entries)")
+                appendLine("Item,Price,Timestamp,Mode,Success")
+
+                synchronized(priceHistoryBuffer) {
+                    priceHistoryBuffer.takeLast(50).forEach { entry ->
+                        appendLine("${entry.itemId},${entry.price},${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.timestamp))},${entry.sourceMode},${entry.wasSuccessful}")
+                    }
+                }
+            })
+
+            logEvent("Session log exported: ${file.absolutePath}")
+            file
+        } catch (e: Exception) {
+            logError("Failed to export session log: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun flushPriceHistory() = withContext(Dispatchers.IO) {
+        synchronized(priceHistoryBuffer) {
+            if (priceHistoryBuffer.isEmpty()) return@withContext
+
+            try {
+                val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                val file = File(logDir, "price_history_${timestamp}.csv")
+
+                val exists = file.exists()
+                file.appendText(buildString {
+                    if (!exists) {
+                        appendLine("Item,Price,Timestamp,Mode,Success,SessionId")
+                    }
+                    priceHistoryBuffer.forEach { entry ->
+                        appendLine("${entry.itemId},${entry.price},${entry.timestamp},${entry.sourceMode},${entry.wasSuccessful},${entry.sessionId}")
+                    }
+                })
+
+                priceHistoryBuffer.clear()
+            } catch (e: Exception) {
+                logError("Failed to flush price history: ${e.message}")
+            }
+        }
+    }
+
+    fun getPriceHistory(itemId: String, limit: Int = 100): List<PriceHistoryEntry> {
+        synchronized(priceHistoryBuffer) {
+            return priceHistoryBuffer
+                .filter { it.itemId == itemId }
+                .sortedByDescending { it.timestamp }
+                .take(limit)
+        }
+    }
+
+    fun detectPriceAnomaly(itemId: String, currentPrice: Int, threshold: Float = 0.2f): Boolean {
+        val history = getPriceHistory(itemId, 10)
+        if (history.size < 3) return false
+
+        val avgPrice = history.map { it.price }.average()
+        val deviation = kotlin.math.abs(currentPrice - avgPrice) / avgPrice
+
+        return deviation > threshold
+    }
+
+    fun getPriceTrend(itemId: String): Int {
+        val history = getPriceHistory(itemId, 5)
+        if (history.size < 2) return 0
+
+        val recent = history.take(2)
+        val older = history.drop(2)
+
+        val recentAvg = recent.map { it.price }.average()
+        val olderAvg = older.map { it.price }.average()
+
+        val diff = (recentAvg - olderAvg) / olderAvg
+
+        return when {
+            diff > 0.05 -> 1
+            diff < -0.05 -> -1
+            else -> 0
+        }
+    }
+
+    fun resetSession() {
+        totalCycles.set(0)
+        successfulOps.set(0)
+        failedOps.set(0)
+        priceUpdates.set(0)
+        ordersCreated.set(0)
+        ordersEdited.set(0)
+        errorsEncountered.set(0)
+        consecutiveErrors.set(0)
+        timeSavedMs.set(0)
+        estimatedProfit.set(0)
+        currentState = ""
+        stateEnterTime = 0
+
+        updateStatistics()
+    }
+
+    fun getStatistics(): SessionStatistics = _statistics.value
+
+    private fun updateStatistics() {
+        val duration = System.currentTimeMillis() - sessionStartTime
+        val cycles = totalCycles.get()
+        val avgCycleTime = if (cycles > 0) duration / cycles else 0
+
+        _statistics.value = SessionStatistics(
+            sessionStartTime = sessionStartTime,
+            totalCycles = cycles,
+            successfulOperations = successfulOps.get(),
+            failedOperations = failedOps.get(),
+            priceUpdates = priceUpdates.get(),
+            ordersCreated = ordersCreated.get(),
+            ordersEdited = ordersEdited.get(),
+            errorsEncountered = errorsEncountered.get(),
+            timeSavedMs = timeSavedMs.get(),
+            estimatedProfitSilver = estimatedProfit.get(),
+            sessionDurationMs = duration,
+            averageCycleTimeMs = avgCycleTime,
+            lastCycleTime = lastCycleTime,
+            consecutiveErrors = consecutiveErrors.get(),
+            lastState = currentState,
+            stateEnterTime = stateEnterTime
+        )
+    }
+
+    private fun calculateEstimateProfit(price: Int): Long {
+        return (price * 0.01).toLong()
+    }
+
+    private fun logEvent(message: String) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val file = File(logDir, "events.log")
+                file.appendText("[$timestamp] $message\n")
+            } catch (e: Exception) {
+                // Ignore logging errors
+            }
+        }
+    }
+
+    private fun logError(message: String) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val file = File(logDir, "errors.log")
+                file.appendText("[$timestamp] ERROR: $message\n")
+            } catch (e: Exception) {
+                // Ignore logging errors
+            }
+        }
     }
 }
