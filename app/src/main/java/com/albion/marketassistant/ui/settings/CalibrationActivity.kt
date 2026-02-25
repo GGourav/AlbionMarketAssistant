@@ -1,13 +1,12 @@
 package com.albion.marketassistant.ui.settings
 
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.albion.marketassistant.R
-import com.albion.marketassistant.data.CalibrationData
+import com.albion.marketassistant.data.*
 import com.albion.marketassistant.db.CalibrationDatabase
+import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,11 +16,13 @@ class CalibrationActivity : AppCompatActivity() {
 
     private val db by lazy { CalibrationDatabase.getInstance(this) }
     private var currentCalibration: CalibrationData? = null
+    private var currentTab = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
 
+        setupTabs()
         loadCurrentCalibration()
 
         findViewById<Button>(R.id.btnSaveCalibration).setOnClickListener {
@@ -37,6 +38,31 @@ class CalibrationActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupTabs() {
+        val tabLayout = findViewById<TabLayout>(R.id.tabLayout)
+        tabLayout.addTab(tabLayout.newTab().setText("Create Mode"))
+        tabLayout.addTab(tabLayout.newTab().setText("Edit Mode"))
+        tabLayout.addTab(tabLayout.newTab().setText("Global"))
+
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                currentTab = tab?.position ?: 0
+                showTabContent(currentTab)
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    private fun showTabContent(tab: Int) {
+        findViewById<LinearLayout>(R.id.createModeLayout).visibility = 
+            if (tab == 0) LinearLayout.VISIBLE else LinearLayout.GONE
+        findViewById<LinearLayout>(R.id.editModeLayout).visibility = 
+            if (tab == 1) LinearLayout.VISIBLE else LinearLayout.GONE
+        findViewById<LinearLayout>(R.id.globalLayout).visibility = 
+            if (tab == 2) LinearLayout.VISIBLE else LinearLayout.GONE
+    }
+
     private fun loadCurrentCalibration() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -44,6 +70,7 @@ class CalibrationActivity : AppCompatActivity() {
                 currentCalibration = calibration
                 withContext(Dispatchers.Main) {
                     populateFields(calibration)
+                    showTabContent(0)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -56,64 +83,103 @@ class CalibrationActivity : AppCompatActivity() {
     }
 
     private fun populateFields(data: CalibrationData) {
-        findViewById<EditText>(R.id.etFirstRowX).setText(data.firstRowX.toString())
-        findViewById<EditText>(R.id.etFirstRowY).setText(data.firstRowY.toString())
-        findViewById<EditText>(R.id.etRowYOffset).setText(data.rowYOffset.toString())
-        findViewById<EditText>(R.id.etMaxRows).setText(data.maxRowsPerScreen.toString())
-        findViewById<EditText>(R.id.etConfirmX).setText(data.confirmButtonX.toString())
-        findViewById<EditText>(R.id.etConfirmY).setText(data.confirmButtonY.toString())
-        findViewById<EditText>(R.id.etCloseX).setText(data.closeButtonX.toString())
-        findViewById<EditText>(R.id.etCloseY).setText(data.closeButtonY.toString())
-        findViewById<EditText>(R.id.etSwipeStartX).setText(data.swipeStartX.toString())
-        findViewById<EditText>(R.id.etSwipeStartY).setText(data.swipeStartY.toString())
-        findViewById<EditText>(R.id.etSwipeEndX).setText(data.swipeEndX.toString())
-        findViewById<EditText>(R.id.etSwipeEndY).setText(data.swipeEndY.toString())
-        findViewById<EditText>(R.id.etSwipeDuration).setText(data.swipeDurationMs.toString())
-        findViewById<EditText>(R.id.etTapDuration).setText(data.tapDurationMs.toString())
-        findViewById<EditText>(R.id.etTextInputDelay).setText(data.textInputDelayMs.toString())
-        findViewById<EditText>(R.id.etPopupOpenWait).setText(data.popupOpenWaitMs.toString())
-        findViewById<EditText>(R.id.etPopupCloseWait).setText(data.popupCloseWaitMs.toString())
-        findViewById<EditText>(R.id.etHighlightColor).setText(data.highlightedRowColorHex)
-        findViewById<EditText>(R.id.etColorTolerance).setText(data.colorToleranceRGB.toString())
+        // Create Mode fields
+        findViewById<EditText>(R.id.createFirstRowX).setText(data.createMode.firstRowX.toString())
+        findViewById<EditText>(R.id.createFirstRowY).setText(data.createMode.firstRowY.toString())
+        findViewById<EditText>(R.id.createRowYOffset).setText(data.createMode.rowYOffset.toString())
+        findViewById<EditText>(R.id.createMaxRows).setText(data.createMode.maxRowsPerScreen.toString())
+        findViewById<EditText>(R.id.createPriceX).setText(data.createMode.priceInputX.toString())
+        findViewById<EditText>(R.id.createPriceY).setText(data.createMode.priceInputY.toString())
+        findViewById<EditText>(R.id.createButtonX).setText(data.createMode.createButtonX.toString())
+        findViewById<EditText>(R.id.createButtonY).setText(data.createMode.createButtonY.toString())
+        findViewById<EditText>(R.id.createConfirmYesX).setText(data.createMode.confirmYesX.toString())
+        findViewById<EditText>(R.id.createConfirmYesY).setText(data.createMode.confirmYesY.toString())
+        findViewById<EditText>(R.id.createOcrLeft).setText(data.createMode.ocrRegionLeft.toString())
+        findViewById<EditText>(R.id.createOcrTop).setText(data.createMode.ocrRegionTop.toString())
+        findViewById<EditText>(R.id.createOcrRight).setText(data.createMode.ocrRegionRight.toString())
+        findViewById<EditText>(R.id.createOcrBottom).setText(data.createMode.ocrRegionBottom.toString())
+
+        // Edit Mode fields
+        findViewById<EditText>(R.id.editButtonX).setText(data.editMode.editButtonX.toString())
+        findViewById<EditText>(R.id.editButtonY).setText(data.editMode.editButtonY.toString())
+        findViewById<EditText>(R.id.editYOffset).setText(data.editMode.editButtonYOffset.toString())
+        findViewById<EditText>(R.id.editPriceX).setText(data.editMode.priceInputX.toString())
+        findViewById<EditText>(R.id.editPriceY).setText(data.editMode.priceInputY.toString())
+        findViewById<EditText>(R.id.updateButtonX).setText(data.editMode.updateButtonX.toString())
+        findViewById<EditText>(R.id.updateButtonY).setText(data.editMode.updateButtonY.toString())
+        findViewById<EditText>(R.id.editConfirmYesX).setText(data.editMode.confirmYesX.toString())
+        findViewById<EditText>(R.id.editConfirmYesY).setText(data.editMode.confirmYesY.toString())
+        findViewById<EditText>(R.id.editOcrLeft).setText(data.editMode.ocrRegionLeft.toString())
+        findViewById<EditText>(R.id.editOcrTop).setText(data.editMode.ocrRegionTop.toString())
+        findViewById<EditText>(R.id.editOcrRight).setText(data.editMode.ocrRegionRight.toString())
+        findViewById<EditText>(R.id.editOcrBottom).setText(data.editMode.ocrRegionBottom.toString())
+
+        // Global fields
+        findViewById<EditText>(R.id.swipeStartX).setText(data.global.swipeStartX.toString())
+        findViewById<EditText>(R.id.swipeStartY).setText(data.global.swipeStartY.toString())
+        findViewById<EditText>(R.id.swipeEndX).setText(data.global.swipeEndX.toString())
+        findViewById<EditText>(R.id.swipeEndY).setText(data.global.swipeEndY.toString())
+        findViewById<EditText>(R.id.swipeDuration).setText(data.global.swipeDurationMs.toString())
+        findViewById<EditText>(R.id.tapDuration).setText(data.global.tapDurationMs.toString())
+        findViewById<EditText>(R.id.textInputDelay).setText(data.global.textInputDelayMs.toString())
+        findViewById<EditText>(R.id.popupOpenWait).setText(data.global.popupOpenWaitMs.toString())
+        findViewById<EditText>(R.id.popupCloseWait).setText(data.global.popupCloseWaitMs.toString())
+        findViewById<EditText>(R.id.confirmationWait).setText(data.global.confirmationWaitMs.toString())
     }
 
     private fun saveCalibration() {
         try {
+            val createConfig = CreateModeConfig(
+                firstRowX = getInt(R.id.createFirstRowX, 100),
+                firstRowY = getInt(R.id.createFirstRowY, 300),
+                rowYOffset = getInt(R.id.createRowYOffset, 80),
+                maxRowsPerScreen = getInt(R.id.createMaxRows, 5),
+                priceInputX = getInt(R.id.createPriceX, 300),
+                priceInputY = getInt(R.id.createPriceY, 400),
+                createButtonX = getInt(R.id.createButtonX, 500),
+                createButtonY = getInt(R.id.createButtonY, 550),
+                confirmYesX = getInt(R.id.createConfirmYesX, 500),
+                confirmYesY = getInt(R.id.createConfirmYesY, 600),
+                ocrRegionLeft = getInt(R.id.createOcrLeft, 600),
+                ocrRegionTop = getInt(R.id.createOcrTop, 200),
+                ocrRegionRight = getInt(R.id.createOcrRight, 1050),
+                ocrRegionBottom = getInt(R.id.createOcrBottom, 500)
+            )
+
+            val editConfig = EditModeConfig(
+                editButtonX = getInt(R.id.editButtonX, 950),
+                editButtonY = getInt(R.id.editButtonY, 300),
+                editButtonYOffset = getInt(R.id.editYOffset, 80),
+                priceInputX = getInt(R.id.editPriceX, 300),
+                priceInputY = getInt(R.id.editPriceY, 400),
+                updateButtonX = getInt(R.id.updateButtonX, 500),
+                updateButtonY = getInt(R.id.updateButtonY, 550),
+                confirmYesX = getInt(R.id.editConfirmYesX, 500),
+                confirmYesY = getInt(R.id.editConfirmYesY, 600),
+                ocrRegionLeft = getInt(R.id.editOcrLeft, 600),
+                ocrRegionTop = getInt(R.id.editOcrTop, 200),
+                ocrRegionRight = getInt(R.id.editOcrRight, 1050),
+                ocrRegionBottom = getInt(R.id.editOcrBottom, 500)
+            )
+
+            val globalConfig = GlobalSettings(
+                swipeStartX = getInt(R.id.swipeStartX, 500),
+                swipeStartY = getInt(R.id.swipeStartY, 600),
+                swipeEndX = getInt(R.id.swipeEndX, 500),
+                swipeEndY = getInt(R.id.swipeEndY, 300),
+                swipeDurationMs = getInt(R.id.swipeDuration, 300),
+                tapDurationMs = getLong(R.id.tapDuration, 150),
+                textInputDelayMs = getLong(R.id.textInputDelay, 200),
+                popupOpenWaitMs = getLong(R.id.popupOpenWait, 800),
+                popupCloseWaitMs = getLong(R.id.popupCloseWait, 600),
+                confirmationWaitMs = getLong(R.id.confirmationWait, 500)
+            )
+
             val updatedData = CalibrationData(
                 id = currentCalibration?.id ?: 0,
-                firstRowX = findViewById<EditText>(R.id.etFirstRowX).text.toString().toIntOrNull() ?: 100,
-                firstRowY = findViewById<EditText>(R.id.etFirstRowY).text.toString().toIntOrNull() ?: 300,
-                rowYOffset = findViewById<EditText>(R.id.etRowYOffset).text.toString().toIntOrNull() ?: 80,
-                maxRowsPerScreen = findViewById<EditText>(R.id.etMaxRows).text.toString().toIntOrNull() ?: 5,
-                confirmButtonX = findViewById<EditText>(R.id.etConfirmX).text.toString().toIntOrNull() ?: 500,
-                confirmButtonY = findViewById<EditText>(R.id.etConfirmY).text.toString().toIntOrNull() ?: 550,
-                closeButtonX = findViewById<EditText>(R.id.etCloseX).text.toString().toIntOrNull() ?: 1000,
-                closeButtonY = findViewById<EditText>(R.id.etCloseY).text.toString().toIntOrNull() ?: 200,
-                swipeStartX = findViewById<EditText>(R.id.etSwipeStartX).text.toString().toIntOrNull() ?: 500,
-                swipeStartY = findViewById<EditText>(R.id.etSwipeStartY).text.toString().toIntOrNull() ?: 600,
-                swipeEndX = findViewById<EditText>(R.id.etSwipeEndX).text.toString().toIntOrNull() ?: 500,
-                swipeEndY = findViewById<EditText>(R.id.etSwipeEndY).text.toString().toIntOrNull() ?: 300,
-                swipeDurationMs = findViewById<EditText>(R.id.etSwipeDuration).text.toString().toIntOrNull() ?: 500,
-                tapDurationMs = findViewById<EditText>(R.id.etTapDuration).text.toString().toLongOrNull() ?: 100,
-                textInputDelayMs = findViewById<EditText>(R.id.etTextInputDelay).text.toString().toLongOrNull() ?: 200,
-                popupOpenWaitMs = findViewById<EditText>(R.id.etPopupOpenWait).text.toString().toLongOrNull() ?: 800,
-                popupCloseWaitMs = findViewById<EditText>(R.id.etPopupCloseWait).text.toString().toLongOrNull() ?: 600,
-                highlightedRowColorHex = findViewById<EditText>(R.id.etHighlightColor).text.toString().ifEmpty { "#E8E8E8" },
-                colorToleranceRGB = findViewById<EditText>(R.id.etColorTolerance).text.toString().toIntOrNull() ?: 30,
-                buyOrdersRegionLeft = currentCalibration?.buyOrdersRegionLeft ?: 600,
-                buyOrdersRegionTop = currentCalibration?.buyOrdersRegionTop ?: 200,
-                buyOrdersRegionRight = currentCalibration?.buyOrdersRegionRight ?: 1050,
-                buyOrdersRegionBottom = currentCalibration?.buyOrdersRegionBottom ?: 500,
-                priceInputX = currentCalibration?.priceInputX ?: 300,
-                priceInputY = currentCalibration?.priceInputY ?: 400,
-                priceInputRegionLeft = currentCalibration?.priceInputRegionLeft ?: 200,
-                priceInputRegionTop = currentCalibration?.priceInputRegionTop ?: 380,
-                priceInputRegionRight = currentCalibration?.priceInputRegionRight ?: 450,
-                priceInputRegionBottom = currentCalibration?.priceInputRegionBottom ?: 420,
-                ocrConfidenceThreshold = currentCalibration?.ocrConfidenceThreshold ?: 0.7f,
-                ocrLanguage = currentCalibration?.ocrLanguage ?: "en",
-                ocr_ScanDelayMs = currentCalibration?.ocr_ScanDelayMs ?: 500,
-                pixelPollingIntervalMs = currentCalibration?.pixelPollingIntervalMs ?: 300
+                createMode = createConfig,
+                editMode = editConfig,
+                global = globalConfig
             )
 
             CoroutineScope(Dispatchers.IO).launch {
@@ -121,7 +187,7 @@ class CalibrationActivity : AppCompatActivity() {
                     db.calibrationDao().insertCalibration(updatedData)
                     currentCalibration = updatedData
                     withContext(Dispatchers.Main) {
-                        showToast("Calibration saved successfully!")
+                        showToast("Calibration saved!")
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -152,6 +218,14 @@ class CalibrationActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun getInt(id: Int, default: Int): Int {
+        return findViewById<EditText>(id).text.toString().toIntOrNull() ?: default
+    }
+
+    private fun getLong(id: Int, default: Long): Long {
+        return findViewById<EditText>(id).text.toString().toLongOrNull() ?: default
     }
 
     private fun showToast(message: String) {
