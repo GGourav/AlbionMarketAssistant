@@ -3,6 +3,7 @@ package com.albion.marketassistant.accessibility
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.util.Log
 import com.albion.marketassistant.data.*
 import com.albion.marketassistant.ml.ColorDetector
 import com.albion.marketassistant.ml.OCREngine
@@ -13,6 +14,7 @@ import com.albion.marketassistant.util.TextSimilarity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
@@ -24,32 +26,34 @@ class StateMachine(
     private val context: Context? = null
 ) {
 
+    companion object {
+        private const val TAG = "StateMachine"
+    }
+
     private val _stateFlow = MutableStateFlow<AutomationState>(AutomationState(StateType.IDLE))
     val stateFlow: StateFlow<AutomationState> = _stateFlow
 
-    private var isRunning = false
-    private var isPaused = false
+    private val isRunning = AtomicBoolean(false)
+    private val isPaused = AtomicBoolean(false)
     private var currentMode = OperationMode.IDLE
     private var currentRowIndex = 0
     private var loopJob: Job? = null
-    private var retryCount = AtomicInteger(0)
+    private val retryCount = AtomicInteger(0)
     private var lastKnownPrice: Int? = null
 
-    private var totalCycleCount = AtomicInteger(0)
+    private val totalCycleCount = AtomicInteger(0)
     private var lastPageText = ""
-    private var endOfListDetectionCount = AtomicInteger(0)
+    private val endOfListDetectionCount = AtomicInteger(0)
 
-    private var windowLostCount = AtomicInteger(0)
-    private var lastWindowCheckTime = AtomicLong(0)
+    private val windowLostCount = AtomicInteger(0)
+    private val lastWindowCheckTime = AtomicLong(0)
 
-    private val ocrEngine = OCREngine()
+    // Fixed: ColorDetector created but methods can be used if needed
     private val colorDetector = ColorDetector()
 
     private val randomizationHelper = RandomizationHelper(calibration.antiDetection)
     private val deviceUtils = context?.let { DeviceUtils(it) }
     private var statisticsManager: StatisticsManager? = null
-
-    var onScreenCaptureRequest: (( (Bitmap?) -> Unit ) -> Unit)? = null
 
     var onStateChange: ((AutomationState) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
@@ -66,12 +70,13 @@ class StateMachine(
     }
 
     fun startMode(mode: OperationMode) {
-        if (isRunning) {
+        if (isRunning.get()) {
             onError?.invoke("Already running")
             return
         }
-        isRunning = true
-        isPaused = false
+        
+        isRunning.set(true)
+        isPaused.set(false)
         currentMode = mode
         currentRowIndex = 0
         retryCount.set(0)
@@ -85,27 +90,32 @@ class StateMachine(
         statisticsManager?.updateState(StateType.IDLE.name)
 
         loopJob = scope.launch { mainLoop() }
+        Log.d(TAG, "Started mode: $mode")
     }
 
     fun pause() {
-        isPaused = true
+        isPaused.set(true)
         statisticsManager?.updateState(StateType.PAUSED.name)
         updateState(StateType.PAUSED, "Paused")
+        Log.d(TAG, "Paused")
     }
 
     fun resume() {
-        isPaused = false
+        isPaused.set(false)
         windowLostCount.set(0)
         statisticsManager?.updateState(StateType.IDLE.name)
         updateState(StateType.IDLE, "Resumed")
+        Log.d(TAG, "Resumed")
     }
 
-    fun isPaused(): Boolean = isPaused
+    fun isPaused(): Boolean = isPaused.get()
 
     fun stop() {
-        isRunning = false
-        isPaused = false
+        Log.d(TAG, "Stopping state machine")
+        isRunning.set(false)
+        isPaused.set(false)
         loopJob?.cancel()
+        loopJob = null
         currentMode = OperationMode.IDLE
 
         scope.launch {
@@ -123,8 +133,8 @@ class StateMachine(
 
     private suspend fun mainLoop() {
         try {
-            while (isRunning) {
-                while (isPaused) {
+            while (isRunning.get()) {
+                while (isPaused.get()) {
                     delay(100)
                 }
 
@@ -174,11 +184,12 @@ class StateMachine(
                 delay(cooldownDelay)
             }
         } catch (e: CancellationException) {
-            // Normal cancellation
+            Log.d(TAG, "Main loop cancelled")
         } catch (e: Exception) {
-            isRunning = false
+            isRunning.set(false)
             statisticsManager?.recordFailure("Main loop error: ${e.message}")
             onError?.invoke("Error: ${e.message}")
+            Log.e(TAG, "Main loop error", e)
         }
     }
 
@@ -295,11 +306,10 @@ class StateMachine(
         return false
     }
 
-    // FIXED: Now actually captures screen and performs OCR
     private suspend fun captureAndOCRFirstLine(): String? {
         val bitmap = onScreenshotRequest?.invoke() ?: return null
         val region = calibration.endOfList.getFirstLineOcrRegion()
-        val results = ocrEngine.recognizeText(bitmap, region)
+        val results = OCREngine.recognizeText(bitmap, region)
         return results.firstOrNull()?.text
     }
 
@@ -319,13 +329,43 @@ class StateMachine(
         }
     }
 
-    private suspend fun verifyUIElement(x: Int, y: Int, expectedColorHex: String, timeoutMs: Long): Boolean {
+    /**
+     * Fixed: Actually verify UI element by checking screenshot
+     */
+    private suspend fun verifyUIElement(
+        x: Int, 
+        y: Int, 
+        expectedColorHex: String, 
+        timeoutMs: Long
+    ): Boolean {
         val startTime = System.currentTimeMillis()
+        
         while (System.currentTimeMillis() - startTime < timeoutMs) {
-            while (isPaused) { delay(100) }
+            if (isPaused.get()) {
+                delay(100)
+                continue
+            }
+            
+            // Take screenshot and check color
+            val bitmap = onScreenshotRequest?.invoke()
+            if (bitmap != null && !bitmap.isRecycled) {
+                try {
+                    val isMatch = colorDetector.isColorMatch(
+                        bitmap, x, y, expectedColorHex, 
+                        calibration.global.colorToleranceRGB
+                    )
+                    if (isMatch) {
+                        return true
+                    }
+                } finally {
+                    // Don't recycle - bitmap is cached
+                }
+            }
+            
             delay(100)
         }
-        return true
+        
+        return false
     }
 
     private suspend fun handleUnexpectedPopup() {
@@ -472,7 +512,6 @@ class StateMachine(
 
             delay(100L.withDelays())
 
-            // FIXED: Now uses configured default price
             val priceToInject = calculatePrice()
             val validation = validatePrice(priceToInject)
 
@@ -524,6 +563,7 @@ class StateMachine(
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
             statisticsManager?.recordFailure("Exception: ${e.message}")
+            Log.e(TAG, "Create order loop error", e)
             handleUnexpectedPopup()
         }
     }
@@ -620,11 +660,11 @@ class StateMachine(
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
             statisticsManager?.recordFailure("Exception: ${e.message}")
+            Log.e(TAG, "Edit order loop error", e)
             handleUnexpectedPopup()
         }
     }
 
-    // FIXED: Now uses configured default price
     private fun calculatePrice(): Int {
         val basePrice = lastKnownPrice ?: calibration.createMode.defaultBuyPrice
         val trend = statisticsManager?.getPriceTrend("current") ?: 0
@@ -663,7 +703,7 @@ class StateMachine(
             mode = currentMode,
             currentRowIndex = currentRowIndex,
             errorMessage = if (stateType.name.startsWith("ERROR")) message else null,
-            isPaused = isPaused,
+            isPaused = isPaused.get(),
             retryCount = retryCount.get(),
             lastPrice = lastKnownPrice,
             statistics = stats,
