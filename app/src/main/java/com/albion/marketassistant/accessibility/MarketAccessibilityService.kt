@@ -35,6 +35,7 @@ class MarketAccessibilityService : AccessibilityService() {
     private var calibration: CalibrationData? = null
     private var ocrEngine: OCREngine? = null
 
+    // Screen capture
     private var imageReader: ImageReader? = null
     private var lastScreenshot: Bitmap? = null
 
@@ -68,7 +69,9 @@ class MarketAccessibilityService : AccessibilityService() {
         val cal = calibration ?: CalibrationData()
         stateMachine?.stop()
         stateMachine = StateMachine(serviceScope, cal, UIInteractorImpl(), this)
-        stateMachine?.onScreenshotRequest = { captureScreen() }
+        stateMachine?.onScreenshotRequest = {
+            captureScreen()
+        }
         stateMachine?.startMode(mode)
     }
 
@@ -91,14 +94,19 @@ class MarketAccessibilityService : AccessibilityService() {
 
     fun getStateMachine(): StateMachine? = stateMachine
 
-    // Note: Screen capture requires MediaProjection API or root access
-    // This is a placeholder - for production use MediaProjection
+    /**
+     * Capture screen using accessibility service
+     * Note: This requires CAPTURE_SCREEN capability in accessibility service config
+     */
     fun captureScreen(): Bitmap? {
-        // Screen capture via accessibility requires additional setup
+        // For now, return null - screen capture via accessibility requires additional setup
         // In production, use MediaProjection API or root access
         return null
     }
 
+    /**
+     * Perform OCR on screen region
+     */
     suspend fun performOCR(region: Rect): List<OCRResult> {
         val screenshot = captureScreen() ?: return emptyList()
         return ocrEngine?.recognizeText(screenshot, region) ?: emptyList()
@@ -107,18 +115,26 @@ class MarketAccessibilityService : AccessibilityService() {
     inner class UIInteractorImpl : UIInteractor {
 
         override fun performTap(x: Int, y: Int, durationMs: Long): Boolean {
-            return performGesture(createTapPath(x, y), durationMs)
+            return performGesture(
+                createTapPath(x, y),
+                durationMs
+            )
         }
 
         override fun performSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long): Boolean {
-            return performGesture(createSwipePath(startX, startY, endX, endY), durationMs)
+            return performGesture(
+                createSwipePath(startX, startY, endX, endY),
+                durationMs
+            )
         }
 
+        /**
+         * Perform gesture with custom path (for randomization)
+         */
         fun performGestureWithPath(path: Path, durationMs: Long): Boolean {
             return performGesture(path, durationMs)
         }
 
-        // FIXED: Added fallback for Unity game engine text injection
         override fun injectText(text: String): Boolean {
             return try {
                 val rootNode = rootInActiveWindow ?: return false
@@ -127,6 +143,7 @@ class MarketAccessibilityService : AccessibilityService() {
                 val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
                 if (focusNode != null) {
+                    // Use ACTION_SET_TEXT (no keyboard popup)
                     val arguments = android.os.Bundle()
                     arguments.putCharSequence(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
@@ -156,7 +173,8 @@ class MarketAccessibilityService : AccessibilityService() {
                     if (result) return true
                 }
 
-                // Fallback: For Unity game engines that don't use standard Android input
+                // Fallback: Simulate keyboard typing for game engines (Unity)
+                // Games often don't expose editable nodes to Accessibility
                 injectTextViaKeyboard(text)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -164,18 +182,24 @@ class MarketAccessibilityService : AccessibilityService() {
             }
         }
 
-        // FIXED: Added fallback for game engines
+        /**
+         * Fallback text injection using keyboard simulation
+         * This works better for game engines like Unity that don't use standard Android input fields
+         */
         private fun injectTextViaKeyboard(text: String): Boolean {
             return try {
-                // Copy to clipboard - some games support paste
+                // For game engines, we need to simulate actual key presses
+                // Since AccessibilityService doesn't directly support key injection,
+                // we'll use a workaround by simulating paste or keyboard events
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 val clip = android.content.ClipData.newPlainText("price", text)
                 clipboard.setPrimaryClip(clip)
                 
-                // For Unity games, text injection via Accessibility often fails
-                // The clipboard workaround allows manual paste if needed
-                // Returns true to indicate clipboard was set successfully
-                true
+                // Simulate Ctrl+V (paste) - works on some games
+                // Note: This requires additional implementation with InputConnection
+                // For now, return false to indicate keyboard injection not fully supported
+                // but clipboard is set, user can manually paste if needed
+                false
             } catch (e: Exception) {
                 e.printStackTrace()
                 false
@@ -194,6 +218,7 @@ class MarketAccessibilityService : AccessibilityService() {
                     result.addAll(findEditableNodes(child))
                 }
             }
+
             return result
         }
 
@@ -209,27 +234,40 @@ class MarketAccessibilityService : AccessibilityService() {
             }
         }
 
+        /**
+         * Get current package name of foreground app
+         */
         fun getForegroundPackage(): String? {
             return rootInActiveWindow?.packageName?.toString()
         }
 
+        /**
+         * Find node by text
+         */
         fun findNodeByText(text: String): AccessibilityNodeInfo? {
             val rootNode = rootInActiveWindow ?: return null
             val nodes = rootNode.findAccessibilityNodeInfosByText(text)
             return nodes.firstOrNull()
         }
 
+        /**
+         * Find node by view ID
+         */
         fun findNodeById(id: String): AccessibilityNodeInfo? {
             val rootNode = rootInActiveWindow ?: return null
             val nodes = rootNode.findAccessibilityNodeInfosByViewId(id)
             return nodes.firstOrNull()
         }
 
+        /**
+         * Click on node
+         */
         fun clickNode(node: AccessibilityNodeInfo): Boolean {
             return try {
                 if (node.isClickable) {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 } else {
+                    // Use parent click if node not clickable
                     var parent = node.parent
                     while (parent != null) {
                         if (parent.isClickable) {
@@ -265,7 +303,10 @@ class MarketAccessibilityService : AccessibilityService() {
         private fun performGesture(path: Path, durationMs: Long): Boolean {
             return try {
                 var success = false
-                val duration = min(durationMs * 1_000_000L, 500_000_000L)
+
+                // Duration in MILLISECONDS (GestureDescription uses milliseconds!)
+                // Ensure minimum 50ms and maximum 500ms for 3D game engines
+                val duration = durationMs.coerceIn(50L, 500L)
 
                 val gesture = GestureDescription.Builder()
                     .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
@@ -288,6 +329,7 @@ class MarketAccessibilityService : AccessibilityService() {
                     }
                 }
 
+                // Wait for gesture to complete (max 2 seconds)
                 latch.await(2, TimeUnit.SECONDS)
                 success
             } catch (e: Exception) {
