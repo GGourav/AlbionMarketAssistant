@@ -2,15 +2,23 @@ package com.albion.marketassistant.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
 import android.media.Image
 import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.albion.marketassistant.data.*
@@ -18,6 +26,7 @@ import com.albion.marketassistant.ml.OCREngine
 import kotlinx.coroutines.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 
 class MarketAccessibilityService : AccessibilityService() {
@@ -27,22 +36,42 @@ class MarketAccessibilityService : AccessibilityService() {
 
     companion object {
         private var instance: MarketAccessibilityService? = null
+        private var mediaProjectionInstance: MediaProjection? = null
+        private var mediaProjectionResultCode: Int = 0
+        private var mediaProjectionResultData: Intent? = null
+        
         fun getInstance(): MarketAccessibilityService? = instance
         fun isServiceEnabled(): Boolean = instance != null
+        
+        fun setMediaProjectionData(resultCode: Int, data: Intent) {
+            mediaProjectionResultCode = resultCode
+            mediaProjectionResultData = data
+        }
+        
+        fun getMediaProjectionData(): Pair<Int, Intent?> = Pair(mediaProjectionResultCode, mediaProjectionResultData)
     }
 
     private var stateMachine: StateMachine? = null
     private var calibration: CalibrationData? = null
     private var ocrEngine: OCREngine? = null
 
-    // Screen capture
+    // Screen capture - MediaProjection based
+    private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
-    private var lastScreenshot: Bitmap? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var screenWidth: Int = 0
+    private var screenHeight: Int = 0
+    private var screenDensity: Int = 0
+    private val latestBitmap = AtomicReference<Bitmap?>(null)
+    private val captureLock = Any()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         ocrEngine = OCREngine()
+
+        // Initialize screen capture if we have MediaProjection data
+        setupMediaProjectionIfNeeded()
 
         val intent = Intent("com.albion.ACCESSIBILITY_READY")
         intent.setPackage(packageName)
@@ -57,8 +86,62 @@ class MarketAccessibilityService : AccessibilityService() {
         super.onDestroy()
         instance = null
         serviceScope.cancel()
-        imageReader?.close()
-        lastScreenshot?.recycle()
+        releaseMediaProjection()
+        latestBitmap.get()?.recycle()
+    }
+
+    /**
+     * Setup MediaProjection for screen capture
+     * This should be called after the user grants permission in MainActivity
+     */
+    fun setupMediaProjectionIfNeeded() {
+        if (mediaProjection != null) return
+        
+        val (resultCode, data) = getMediaProjectionData()
+        if (resultCode != 0 && data != null) {
+            try {
+                val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjection = manager.getMediaProjection(resultCode, data)
+                setupImageReader()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun setupImageReader() {
+        if (mediaProjection == null) return
+        
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val metrics = DisplayMetrics()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            screenWidth = bounds.width()
+            screenHeight = bounds.height()
+            screenDensity = resources.configuration.densityDpi
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+            screenDensity = metrics.densityDpi
+        }
+
+        imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+        
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "AlbionMarketCapture",
+            screenWidth, screenHeight, screenDensity,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader!!.surface,
+            object : VirtualDisplay.Callback() {
+                override fun onStopped() {
+                    // Virtual display stopped
+                }
+            },
+            mainHandler
+        )
     }
 
     fun setCalibration(data: CalibrationData) {
@@ -95,13 +178,57 @@ class MarketAccessibilityService : AccessibilityService() {
     fun getStateMachine(): StateMachine? = stateMachine
 
     /**
-     * Capture screen using accessibility service
-     * Note: This requires CAPTURE_SCREEN capability in accessibility service config
+     * Capture screen using MediaProjection
+     * Returns the latest captured bitmap
      */
     fun captureScreen(): Bitmap? {
-        // For now, return null - screen capture via accessibility requires additional setup
-        // In production, use MediaProjection API or root access
-        return null
+        synchronized(captureLock) {
+            try {
+                // Try to setup if not already done
+                if (mediaProjection == null) {
+                    setupMediaProjectionIfNeeded()
+                }
+                
+                if (imageReader == null) {
+                    return latestBitmap.get()
+                }
+
+                val image: Image? = imageReader?.acquireLatestImage()
+                if (image == null) {
+                    return latestBitmap.get()
+                }
+
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * screenWidth
+
+                // Create bitmap
+                val bitmapWidth = screenWidth + rowPadding / pixelStride
+                val bitmap = Bitmap.createBitmap(bitmapWidth, screenHeight, Bitmap.Config.ARGB_8888)
+                bitmap.copyPixelsFromBuffer(buffer)
+                image.close()
+
+                // Crop if needed
+                val finalBitmap = if (rowPadding > 0) {
+                    val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                    bitmap.recycle()
+                    cropped
+                } else {
+                    bitmap
+                }
+
+                // Update cached bitmap
+                val oldBitmap = latestBitmap.getAndSet(finalBitmap)
+                oldBitmap?.recycle()
+
+                return finalBitmap
+            } catch (e: Exception) {
+                e.printStackTrace()
+                return latestBitmap.get()
+            }
+        }
     }
 
     /**
@@ -110,6 +237,17 @@ class MarketAccessibilityService : AccessibilityService() {
     suspend fun performOCR(region: Rect): List<OCRResult> {
         val screenshot = captureScreen() ?: return emptyList()
         return ocrEngine?.recognizeText(screenshot, region) ?: emptyList()
+    }
+
+    private fun releaseMediaProjection() {
+        synchronized(captureLock) {
+            virtualDisplay?.release()
+            virtualDisplay = null
+            imageReader?.close()
+            imageReader = null
+            mediaProjection?.stop()
+            mediaProjection = null
+        }
     }
 
     inner class UIInteractorImpl : UIInteractor {
@@ -195,10 +333,8 @@ class MarketAccessibilityService : AccessibilityService() {
                 val clip = android.content.ClipData.newPlainText("price", text)
                 clipboard.setPrimaryClip(clip)
                 
-                // Simulate Ctrl+V (paste) - works on some games
-                // Note: This requires additional implementation with InputConnection
-                // For now, return false to indicate keyboard injection not fully supported
-                // but clipboard is set, user can manually paste if needed
+                // Clipboard is set - user can paste manually if needed
+                // Return false to indicate we couldn't inject directly
                 false
             } catch (e: Exception) {
                 e.printStackTrace()
