@@ -15,11 +15,11 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.albion.marketassistant.accessibility.MarketAccessibilityService
+import com.albion.marketassistant.accessibility.StateMachine
+import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.data.CalibrationData
 import com.albion.marketassistant.data.OperationMode
 import com.albion.marketassistant.db.CalibrationDatabase
-import com.albion.marketassistant.accessibility.StateMachine
-import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.ui.MainActivity
 import com.albion.marketassistant.ui.overlay.FloatingOverlayManager
 import kotlinx.coroutines.*
@@ -33,14 +33,18 @@ class AutomationForegroundService : Service() {
         const val ACTION_START_MODE = "com.albion.START_MODE"
         const val ACTION_STOP_MODE = "com.albion.STOP_MODE"
         const val ACTION_ACCESSIBILITY_READY = "com.albion.ACCESSIBILITY_READY"
+        const val ACTION_CREATE_MODE = "com.albion.CREATE_MODE"
+        const val ACTION_EDIT_MODE = "com.albion.EDIT_MODE"
+        const val ACTION_PAUSE = "com.albion.PAUSE"
+        const val ACTION_RESUME = "com.albion.RESUME"
         const val EXTRA_MODE = "mode"
     }
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var stateMachine: StateMachine? = null
-    private var currentMode: OperationMode = OperationMode.IDLE
     private var isAccessibilityReady = false
     private var pendingMode: OperationMode? = null
+    private var currentMode: OperationMode? = null
     private var floatingOverlayManager: FloatingOverlayManager? = null
     
     private val broadcastReceiver = object : BroadcastReceiver() {
@@ -72,17 +76,11 @@ class AutomationForegroundService : Service() {
         
         isAccessibilityReady = MarketAccessibilityService.isServiceEnabled()
         
-        // Initialize floating overlay manager
         floatingOverlayManager = FloatingOverlayManager(this) { action ->
             handleOverlayAction(action)
         }
         
         startForeground(NOTIFICATION_ID, createNotification("Ready"))
-        
-        // Show floating overlay immediately
-        if (Settings.canDrawOverlays(this)) {
-            floatingOverlayManager?.show("Select a mode")
-        }
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -90,6 +88,10 @@ class AutomationForegroundService : Service() {
             when (it.action) {
                 ACTION_START_MODE -> handleStartMode(intent)
                 ACTION_STOP_MODE -> handleStopMode()
+                ACTION_CREATE_MODE -> handleCreateMode()
+                ACTION_EDIT_MODE -> handleEditMode()
+                ACTION_PAUSE -> handlePause()
+                ACTION_RESUME -> handleResume()
             }
         }
         return START_STICKY
@@ -109,15 +111,11 @@ class AutomationForegroundService : Service() {
     
     private fun handleOverlayAction(action: String) {
         when (action) {
-            "CREATE_ORDER" -> {
-                startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
-            }
-            "EDIT_ORDER" -> {
-                startAutomationMode(OperationMode.ORDER_EDITOR)
-            }
-            "STOP" -> {
-                handleStopMode()
-            }
+            "CREATE" -> handleCreateMode()
+            "EDIT" -> handleEditMode()
+            "PAUSE" -> handlePause()
+            "RESUME" -> handleResume()
+            "STOP" -> handleStopMode()
         }
     }
     
@@ -129,22 +127,62 @@ class AutomationForegroundService : Service() {
             intent.getSerializableExtra(EXTRA_MODE) as? OperationMode
         } ?: return
         
-        // Check overlay permission first
         if (!Settings.canDrawOverlays(this)) {
             showToast("Please allow 'Display over other apps' permission")
             return
         }
         
-        // Check if accessibility service is ready
         if (!isAccessibilityReady && !MarketAccessibilityService.isServiceEnabled()) {
             showToast("Please enable Accessibility Service in Settings")
-            showToast("Settings > Accessibility > Albion Market Assistant")
             pendingMode = mode
             return
         }
         
         isAccessibilityReady = true
         startAutomationMode(mode)
+    }
+    
+    private fun handleCreateMode() {
+        if (!checkPermissions()) return
+        
+        currentMode = OperationMode.NEW_ORDER_SWEEPER
+        startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
+        showToast("Create Order mode started")
+    }
+    
+    private fun handleEditMode() {
+        if (!checkPermissions()) return
+        
+        currentMode = OperationMode.ORDER_EDITOR
+        startAutomationMode(OperationMode.ORDER_EDITOR)
+        showToast("Edit Order mode started")
+    }
+    
+    private fun handlePause() {
+        stateMachine?.pause()
+        floatingOverlayManager?.updateStatus("PAUSED")
+        showToast("Paused")
+    }
+    
+    private fun handleResume() {
+        stateMachine?.resume()
+        floatingOverlayManager?.updateStatus("Running")
+        showToast("Resumed")
+    }
+    
+    private fun checkPermissions(): Boolean {
+        if (!Settings.canDrawOverlays(this)) {
+            showToast("Please allow 'Display over other apps' permission")
+            return false
+        }
+        
+        if (!isAccessibilityReady && !MarketAccessibilityService.isServiceEnabled()) {
+            showToast("Please enable Accessibility Service in Settings")
+            return false
+        }
+        
+        isAccessibilityReady = true
+        return true
     }
     
     private fun startAutomationMode(mode: OperationMode) {
@@ -158,7 +196,6 @@ class AutomationForegroundService : Service() {
                 if (accessibilityService == null) {
                     showToast("Accessibility Service not available")
                     updateNotification("Error: Service not available")
-                    floatingOverlayManager?.updateStatus("Error: No Accessibility")
                     return@launch
                 }
                 
@@ -168,24 +205,25 @@ class AutomationForegroundService : Service() {
                 stateMachine = StateMachine(serviceScope, calibration, uiInteractor)
                 stateMachine?.onStateChange = { state -> 
                     updateNotification("${mode.name}: ${state.stateType}")
-                    floatingOverlayManager?.updateStatus("${mode.name}: ${state.stateType}")
+                    floatingOverlayManager?.updateStatus(state.stateType.name)
                 }
                 stateMachine?.onError = { error -> 
                     showToast("Error: $error")
-                    floatingOverlayManager?.updateStatus("Error: $error")
+                    floatingOverlayManager?.updateStatus("Error")
                 }
                 
                 stateMachine?.startMode(mode)
                 currentMode = mode
                 showToast("$mode started")
                 updateNotification("Running: $mode")
-                floatingOverlayManager?.updateStatus("Running: $mode")
+                
+                floatingOverlayManager?.show()
+                floatingOverlayManager?.updateStatus("Running")
                 
             } catch (e: Exception) {
                 showToast("Error: ${e.message}")
                 e.printStackTrace()
                 updateNotification("Error: ${e.message}")
-                floatingOverlayManager?.updateStatus("Error: ${e.message}")
             }
         }
     }
@@ -193,11 +231,13 @@ class AutomationForegroundService : Service() {
     private fun handleStopMode() {
         stateMachine?.stop()
         stateMachine = null
-        currentMode = OperationMode.IDLE
+        currentMode = null
+        pendingMode = null
+        
+        floatingOverlayManager?.hide()
         
         showToast("Stopped")
         updateNotification("Ready")
-        floatingOverlayManager?.updateStatus("Stopped - Select mode")
     }
     
     private fun createNotificationChannel() {
