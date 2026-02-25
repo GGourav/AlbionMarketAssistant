@@ -3,6 +3,7 @@ package com.albion.marketassistant.statistics
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Environment
+import android.util.Log
 import com.albion.marketassistant.data.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -21,6 +23,10 @@ class StatisticsManager(
     private val context: Context,
     private val scope: CoroutineScope
 ) {
+    companion object {
+        private const val TAG = "StatisticsManager"
+    }
+
     private val _statistics = MutableStateFlow(SessionStatistics())
     val statistics: StateFlow<SessionStatistics> = _statistics
 
@@ -37,12 +43,17 @@ class StatisticsManager(
     private val timeSavedMs = AtomicLong(0)
     private val estimatedProfit = AtomicLong(0)
 
+    @Volatile
     private var currentState: String = ""
+    @Volatile
     private var stateEnterTime: Long = 0
+    @Volatile
     private var lastCycleTime: Long = System.currentTimeMillis()
     private val sessionStartTime = System.currentTimeMillis()
 
-    private val priceHistoryBuffer = mutableListOf<PriceHistoryEntry>()
+    // Fixed: Use thread-safe collection
+    private val priceHistoryBuffer = ConcurrentLinkedQueue<PriceHistoryEntry>()
+    private val bufferLock = Any()
 
     private val screenshotDir: File by lazy {
         File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "screenshots").apply {
@@ -99,7 +110,7 @@ class StatisticsManager(
             sessionId = sessionId
         )
 
-        synchronized(priceHistoryBuffer) {
+        synchronized(bufferLock) {
             priceHistoryBuffer.add(entry)
 
             if (priceHistoryBuffer.size > 1000) {
@@ -127,7 +138,7 @@ class StatisticsManager(
                 }
             })
         } catch (e: Exception) {
-            logError("Failed to write price history: ${e.message}")
+            Log.e(TAG, "Failed to write price history: ${e.message}")
         }
     }
 
@@ -161,7 +172,7 @@ class StatisticsManager(
             logEvent("Screenshot saved: ${file.absolutePath}")
             file
         } catch (e: Exception) {
-            logError("Failed to save screenshot: ${e.message}")
+            Log.e(TAG, "Failed to save screenshot: ${e.message}")
             null
         }
     }
@@ -195,8 +206,8 @@ class StatisticsManager(
                 appendLine("Price History (last 50 entries)")
                 appendLine("Item,Price,Timestamp,Mode,Success")
 
-                synchronized(priceHistoryBuffer) {
-                    priceHistoryBuffer.takeLast(50).forEach { entry ->
+                synchronized(bufferLock) {
+                    priceHistoryBuffer.toList().takeLast(50).forEach { entry ->
                         appendLine("${entry.itemId},${entry.price},${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.timestamp))},${entry.sourceMode},${entry.wasSuccessful}")
                     }
                 }
@@ -205,13 +216,13 @@ class StatisticsManager(
             logEvent("Session log exported: ${file.absolutePath}")
             file
         } catch (e: Exception) {
-            logError("Failed to export session log: ${e.message}")
+            Log.e(TAG, "Failed to export session log: ${e.message}")
             null
         }
     }
 
     suspend fun flushPriceHistory() = withContext(Dispatchers.IO) {
-        synchronized(priceHistoryBuffer) {
+        synchronized(bufferLock) {
             if (priceHistoryBuffer.isEmpty()) return@withContext
 
             try {
@@ -230,13 +241,13 @@ class StatisticsManager(
 
                 priceHistoryBuffer.clear()
             } catch (e: Exception) {
-                logError("Failed to flush price history: ${e.message}")
+                Log.e(TAG, "Failed to flush price history: ${e.message}")
             }
         }
     }
 
     fun getPriceHistory(itemId: String, limit: Int = 100): List<PriceHistoryEntry> {
-        synchronized(priceHistoryBuffer) {
+        synchronized(bufferLock) {
             return priceHistoryBuffer
                 .filter { it.itemId == itemId }
                 .sortedByDescending { it.timestamp }
@@ -260,6 +271,8 @@ class StatisticsManager(
 
         val recent = history.take(2)
         val older = history.drop(2)
+
+        if (older.isEmpty()) return 0
 
         val recentAvg = recent.map { it.price }.average()
         val olderAvg = older.map { it.price }.average()
