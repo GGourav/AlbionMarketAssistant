@@ -66,7 +66,6 @@ class FloatingOverlayManager(
                 hide()
             }
 
-            // Make overlay draggable
             setupDrag(params)
 
             windowManager.addView(overlayView, params)
