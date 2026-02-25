@@ -436,3 +436,51 @@
                     android:orientation="horizontal"
                     android:layout_marginTop="4dp">
                     <EditText android:id="@+id/ed
+                        <!-- Add this inside the globalLayout section, after the networkLagMultiplier field -->
+
+<TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="📐 Swipe Calibration Guide"
+    android:textStyle="bold"
+    android:textColor="#2196F3"
+    android:layout_marginTop="16dp"/>
+
+<TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Swipe Distance = Max Rows × Row Y Offset\nExample: 5 rows × 80px = 400px swipe\nYour swipe should be: Start Y - End Y = calculated distance"
+    android:textSize="10sp"
+    android:textColor="#666666"
+    android:layout_marginBottom="8dp"/>
+
+<TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="App Package (for immersive mode protection)"
+    android:textStyle="bold"
+    android:layout_marginTop="12dp"/>
+
+<EditText android:id="@+id/targetAppPackage"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:textSize="12sp"
+    android:padding="8dp"
+    android:layout_marginTop="4dp"
+    android:hint="Target App Package (default: com.albiononline)"/>
+
+<TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Max Same-Page Detections"
+    android:textStyle="bold"
+    android:layout_marginTop="12dp"/>
+
+<EditText android:id="@+id/maxSamePageCount"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:inputType="number"
+    android:textSize="12sp"
+    android:padding="8dp"
+    android:layout_marginTop="4dp"
+    android:hint="Stop after X same-page detections (default: 2)"/>
