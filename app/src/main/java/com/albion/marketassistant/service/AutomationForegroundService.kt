@@ -19,6 +19,7 @@ import com.albion.marketassistant.accessibility.StateMachine
 import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.data.CalibrationData
 import com.albion.marketassistant.data.OperationMode
+import com.albion.marketassistant.data.StateType
 import com.albion.marketassistant.db.CalibrationDatabase
 import com.albion.marketassistant.ui.MainActivity
 import com.albion.marketassistant.ui.overlay.FloatingOverlayManager
@@ -206,10 +207,26 @@ class AutomationForegroundService : Service() {
                 stateMachine?.onStateChange = { state -> 
                     updateNotification("${mode.name}: ${state.stateType}")
                     floatingOverlayManager?.updateStatus(state.stateType.name)
+                    
+                    when (state.stateType) {
+                        StateType.ERROR_PRICE_SANITY -> {
+                            showToast("⚠️ PRICE SANITY ERROR: ${state.errorMessage}")
+                            floatingOverlayManager?.updateStatus("PRICE ERROR!")
+                        }
+                        StateType.ERROR_TIMEOUT -> {
+                            showToast("Timeout - retrying...")
+                        }
+                        else -> {}
+                    }
                 }
                 stateMachine?.onError = { error -> 
                     showToast("Error: $error")
                     floatingOverlayManager?.updateStatus("Error")
+                }
+                stateMachine?.onPriceSanityError = { error ->
+                    showToast("🛡️ SAFETY HALT: $error")
+                    floatingOverlayManager?.updateStatus("SAFETY HALT")
+                    stateMachine?.pause()
                 }
                 
                 stateMachine?.startMode(mode)
