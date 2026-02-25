@@ -9,10 +9,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.albion.marketassistant.R
@@ -29,6 +29,7 @@ import kotlinx.coroutines.*
 class AutomationForegroundService : Service() {
 
     companion object {
+        private const val TAG = "AutomationService"
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "AlbionAssistant"
 
@@ -53,6 +54,7 @@ class AutomationForegroundService : Service() {
     private var floatingOverlayManager: FloatingOverlayManager? = null
     private var deviceUtils: DeviceUtils? = null
     private var statsUpdateJob: Job? = null
+    private var currentCalibration: CalibrationData? = null
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -90,6 +92,7 @@ class AutomationForegroundService : Service() {
 
         startForeground(NOTIFICATION_ID, createNotification("Ready", null))
         startBatteryMonitoring()
+        Log.d(TAG, "Service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -112,13 +115,16 @@ class AutomationForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        Log.d(TAG, "Service destroying")
         stateMachine?.stop()
         floatingOverlayManager?.hide()
         statsUpdateJob?.cancel()
         serviceScope.cancel()
         try {
             unregisterReceiver(broadcastReceiver)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering receiver", e)
+        }
         super.onDestroy()
     }
 
@@ -222,8 +228,10 @@ class AutomationForegroundService : Service() {
     private fun startAutomationMode(mode: OperationMode) {
         serviceScope.launch {
             try {
+                // Load calibration from database
                 val database = CalibrationDatabase.getInstance(applicationContext)
                 val calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
+                currentCalibration = calibration
 
                 val accessibilityService = MarketAccessibilityService.getInstance()
 
@@ -232,6 +240,9 @@ class AutomationForegroundService : Service() {
                     updateNotification("Error: Service not available", null)
                     return@launch
                 }
+
+                // Fixed: Pass calibration to the accessibility service
+                accessibilityService.setCalibration(calibration)
 
                 val uiInteractor: UIInteractor = accessibilityService.getUIInteractor()
 
@@ -303,9 +314,11 @@ class AutomationForegroundService : Service() {
 
                 startStatisticsUpdates()
 
+                Log.d(TAG, "Automation mode started: $mode")
+
             } catch (e: Exception) {
                 showToast("Error: ${e.message}")
-                e.printStackTrace()
+                Log.e(TAG, "Error starting automation", e)
                 updateNotification("Error: ${e.message}", null)
             }
         }
@@ -328,7 +341,8 @@ class AutomationForegroundService : Service() {
             while (true) {
                 delay(30000)
 
-                val batterySettings = calibration.battery
+                val batterySettings = currentCalibration?.battery 
+                    ?: CalibrationData().battery
 
                 if (batterySettings.enableBatteryOptimization) {
                     deviceUtils?.let { utils ->
@@ -350,10 +364,12 @@ class AutomationForegroundService : Service() {
         stateMachine = null
         currentMode = null
         pendingMode = null
+        currentCalibration = null
         statsUpdateJob?.cancel()
         floatingOverlayManager?.hide()
         showToast("Stopped")
         updateNotification("Ready", null)
+        Log.d(TAG, "Automation stopped")
     }
 
     private fun showStatisticsToast() {
@@ -408,14 +424,11 @@ class AutomationForegroundService : Service() {
             val notification = createNotification(status, stats)
             getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error updating notification", e)
         }
     }
 
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
-
-    private val calibration: CalibrationData
-        get() = CalibrationData()
 }
