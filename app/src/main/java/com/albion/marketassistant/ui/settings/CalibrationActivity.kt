@@ -44,6 +44,7 @@ class CalibrationActivity : AppCompatActivity() {
         tabLayout.addTab(tabLayout.newTab().setText("Edit"))
         tabLayout.addTab(tabLayout.newTab().setText("Global"))
         tabLayout.addTab(tabLayout.newTab().setText("Safety"))
+        tabLayout.addTab(tabLayout.newTab().setText("Advanced"))
 
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
@@ -56,14 +57,16 @@ class CalibrationActivity : AppCompatActivity() {
     }
 
     private fun showTabContent(tab: Int) {
-        findViewById<LinearLayout>(R.id.createModeLayout).visibility = 
+        findViewById<LinearLayout>(R.id.createModeLayout).visibility =
             if (tab == 0) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.editModeLayout).visibility = 
+        findViewById<LinearLayout>(R.id.editModeLayout).visibility =
             if (tab == 1) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.globalLayout).visibility = 
+        findViewById<LinearLayout>(R.id.globalLayout).visibility =
             if (tab == 2) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.safetyLayout).visibility = 
+        findViewById<LinearLayout>(R.id.safetyLayout).visibility =
             if (tab == 3) LinearLayout.VISIBLE else LinearLayout.GONE
+        findViewById<LinearLayout>(R.id.advancedLayout).visibility =
+            if (tab == 4) LinearLayout.VISIBLE else LinearLayout.GONE
     }
 
     private fun loadCurrentCalibration() {
@@ -143,6 +146,37 @@ class CalibrationActivity : AppCompatActivity() {
         findViewById<CheckBox>(R.id.autoDismissErrors).isChecked = data.safety.autoDismissErrors
         findViewById<EditText>(R.id.maxRetries).setText(data.safety.maxRetries.toString())
         findViewById<EditText>(R.id.uiTimeout).setText(data.safety.uiTimeoutMs.toString())
+
+        // Advanced fields
+        findViewById<CheckBox>(R.id.enableRandomization).isChecked = data.antiDetection.enableRandomization
+        findViewById<CheckBox>(R.id.randomizeGesturePath).isChecked = data.antiDetection.randomizeGesturePath
+        findViewById<EditText>(R.id.randomDelayRange).setText(data.antiDetection.randomDelayRangeMs.toString())
+        findViewById<EditText>(R.id.pathRandomizationPixels).setText(data.antiDetection.pathRandomizationPixels.toString())
+
+        findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked = data.endOfList.enableEndOfListDetection
+        findViewById<EditText>(R.id.identicalPageThreshold).setText(data.endOfList.identicalPageThreshold.toString())
+        findViewById<EditText>(R.id.maxCyclesBeforeStop).setText(data.endOfList.maxCyclesBeforeStop.toString())
+
+        findViewById<CheckBox>(R.id.enableWindowVerification).isChecked = data.immersiveMode.enableWindowVerification
+        findViewById<EditText>(R.id.gamePackageName).setText(data.immersiveMode.gamePackageName)
+        findViewById<EditText>(R.id.windowLostThreshold).setText(data.immersiveMode.windowLostThreshold.toString())
+        findViewById<CheckBox>(R.id.autoResumeOnReturn).isChecked = data.immersiveMode.autoResumeOnReturn
+
+        findViewById<CheckBox>(R.id.enableSwipeOverlap).isChecked = data.swipeOverlap.enableSwipeOverlap
+        findViewById<EditText>(R.id.overlapRowCount).setText(data.swipeOverlap.overlapRowCount.toString())
+        findViewById<EditText>(R.id.swipeSettleTime).setText(data.swipeOverlap.swipeSettleTimeMs.toString())
+
+        findViewById<CheckBox>(R.id.enableBatteryOptimization).isChecked = data.battery.enableBatteryOptimization
+        findViewById<EditText>(R.id.pauseOnBatteryBelow).setText(data.battery.pauseOnBatteryBelow.toString())
+
+        findViewById<CheckBox>(R.id.enableSmartRecovery).isChecked = data.errorRecovery.enableSmartRecovery
+        findViewById<EditText>(R.id.maxConsecutiveErrors).setText(data.errorRecovery.maxConsecutiveErrors.toString())
+        findViewById<EditText>(R.id.maxStateStuckTime).setText(data.errorRecovery.maxStateStuckTimeMs.toString())
+        findViewById<CheckBox>(R.id.screenshotOnError).isChecked = data.errorRecovery.screenshotOnError
+
+        findViewById<CheckBox>(R.id.enablePriceHistory).isChecked = data.priceHistory.enablePriceHistory
+        findViewById<CheckBox>(R.id.enableAnomalyDetection).isChecked = data.priceHistory.enableAnomalyDetection
+        findViewById<EditText>(R.id.maxHistoryEntries).setText(data.priceHistory.maxHistoryEntries.toString())
     }
 
     private fun saveCalibration() {
@@ -209,12 +243,63 @@ class CalibrationActivity : AppCompatActivity() {
                 uiTimeoutMs = getLong(R.id.uiTimeout, 3000)
             )
 
+            val antiDetectionConfig = AntiDetectionSettings(
+                enableRandomization = findViewById<CheckBox>(R.id.enableRandomization).isChecked,
+                randomizeGesturePath = findViewById<CheckBox>(R.id.randomizeGesturePath).isChecked,
+                randomDelayRangeMs = getLong(R.id.randomDelayRange, 100),
+                pathRandomizationPixels = getInt(R.id.pathRandomizationPixels, 5)
+            )
+
+            val endOfListConfig = EndOfListSettings(
+                enableEndOfListDetection = findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked,
+                identicalPageThreshold = getInt(R.id.identicalPageThreshold, 3),
+                maxCyclesBeforeStop = getInt(R.id.maxCyclesBeforeStop, 500)
+            )
+
+            val immersiveModeConfig = ImmersiveModeSettings(
+                enableWindowVerification = findViewById<CheckBox>(R.id.enableWindowVerification).isChecked,
+                gamePackageName = findViewById<EditText>(R.id.gamePackageName).text.toString(),
+                windowLostThreshold = getInt(R.id.windowLostThreshold, 2),
+                autoResumeOnReturn = findViewById<CheckBox>(R.id.autoResumeOnReturn).isChecked
+            )
+
+            val swipeOverlapConfig = SwipeOverlapSettings(
+                enableSwipeOverlap = findViewById<CheckBox>(R.id.enableSwipeOverlap).isChecked,
+                overlapRowCount = getInt(R.id.overlapRowCount, 1),
+                swipeSettleTimeMs = getLong(R.id.swipeSettleTime, 400)
+            )
+
+            val batteryConfig = BatterySettings(
+                enableBatteryOptimization = findViewById<CheckBox>(R.id.enableBatteryOptimization).isChecked,
+                pauseOnBatteryBelow = getInt(R.id.pauseOnBatteryBelow, 15)
+            )
+
+            val errorRecoveryConfig = ErrorRecoverySettings(
+                enableSmartRecovery = findViewById<CheckBox>(R.id.enableSmartRecovery).isChecked,
+                maxConsecutiveErrors = getInt(R.id.maxConsecutiveErrors, 5),
+                maxStateStuckTimeMs = getLong(R.id.maxStateStuckTime, 30000),
+                screenshotOnError = findViewById<CheckBox>(R.id.screenshotOnError).isChecked
+            )
+
+            val priceHistoryConfig = PriceHistorySettings(
+                enablePriceHistory = findViewById<CheckBox>(R.id.enablePriceHistory).isChecked,
+                enableAnomalyDetection = findViewById<CheckBox>(R.id.enableAnomalyDetection).isChecked,
+                maxHistoryEntries = getInt(R.id.maxHistoryEntries, 100)
+            )
+
             val updatedData = CalibrationData(
                 id = currentCalibration?.id ?: 0,
                 createMode = createConfig,
                 editMode = editConfig,
                 global = globalConfig,
-                safety = safetyConfig
+                safety = safetyConfig,
+                antiDetection = antiDetectionConfig,
+                endOfList = endOfListConfig,
+                immersiveMode = immersiveModeConfig,
+                swipeOverlap = swipeOverlapConfig,
+                battery = batteryConfig,
+                errorRecovery = errorRecoveryConfig,
+                priceHistory = priceHistoryConfig
             )
 
             CoroutineScope(Dispatchers.IO).launch {
