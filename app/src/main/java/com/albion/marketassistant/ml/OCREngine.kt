@@ -10,12 +10,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class OCREngine {
+/**
+ * Singleton OCR Engine using ML Kit
+ * Fixed: Now uses singleton pattern to avoid creating multiple recognizers
+ */
+object OCREngine {
     
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val isProcessing = AtomicBoolean(false)
     
     suspend fun recognizeText(
         bitmap: Bitmap,
@@ -25,6 +31,7 @@ class OCREngine {
         var croppedBitmap: Bitmap? = null
         
         try {
+            // Validate region bounds
             val x = maxOf(0, region.left)
             val y = maxOf(0, region.top)
             val width = minOf(region.right - x, bitmap.width - x)
@@ -34,25 +41,28 @@ class OCREngine {
                 return@withContext emptyList()
             }
             
+            // Validate bitmap is not recycled
+            if (bitmap.isRecycled) {
+                return@withContext emptyList()
+            }
+            
             croppedBitmap = Bitmap.createBitmap(bitmap, x, y, width, height)
             val image = InputImage.fromBitmap(croppedBitmap, 0)
             
             val visionText = try {
                 awaitTask(recognizer.process(image))
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("OCREngine", "OCR failed", e)
                 null
             }
             
             visionText?.let { parseVisionText(it, region) } ?: emptyList()
             
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("OCREngine", "recognizeText error", e)
             emptyList()
         } finally {
             croppedBitmap?.recycle()
-            croppedBitmap = null
-            System.gc()
         }
     }
     
@@ -72,7 +82,7 @@ class OCREngine {
                 kotlinx.coroutines.delay(50)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("OCREngine", "processScreenshot error", e)
         }
         
         results
@@ -134,7 +144,12 @@ class OCREngine {
     private fun extractInteger(text: String): Int? {
         return try {
             val cleaned = text.replace(Regex("[^\\d-]"), "")
-            if (cleaned.isNotEmpty()) cleaned.toInt() else null
+            if (cleaned.isNotEmpty()) {
+                val value = cleaned.toLong()
+                if (value in Int.MIN_VALUE..Int.MAX_VALUE) value.toInt() else null
+            } else {
+                null
+            }
         } catch (e: NumberFormatException) {
             null
         }
@@ -157,5 +172,16 @@ class OCREngine {
         }
         
         return null
+    }
+    
+    /**
+     * Close the recognizer when app is shutting down
+     */
+    fun close() {
+        try {
+            recognizer.close()
+        } catch (e: Exception) {
+            android.util.Log.e("OCREngine", "Error closing recognizer", e)
+        }
     }
 }
