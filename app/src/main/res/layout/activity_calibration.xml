@@ -267,6 +267,39 @@
                         android:hint="Bottom"/>
                 </LinearLayout>
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="💰 Price Settings"
+                    android:textStyle="bold"
+                    android:textColor="#4CAF50"
+                    android:layout_marginTop="12dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Default buy price for new orders"
+                    android:textSize="10sp"
+                    android:textColor="#666666"/>
+
+                <EditText android:id="@+id/createDefaultPrice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:textSize="12sp"
+                    android:padding="8dp"
+                    android:layout_marginTop="4dp"
+                    android:hint="Default Buy Price (silver, default: 10000)"/>
+
+                <EditText android:id="@+id/createPriceIncrement"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:textSize="12sp"
+                    android:padding="8dp"
+                    android:layout_marginTop="4dp"
+                    android:hint="Price Increment per order (default: 1)"/>
+
             </LinearLayout>
 
             <!-- EDIT MODE LAYOUT -->
@@ -904,7 +937,7 @@
                     android:textSize="12sp"
                     android:padding="8dp"
                     android:hint="Game package name"
-                    android:text="com.albiononline.albiononline"/>
+                    android:text="com.albiononline"/>
 
                 <EditText android:id="@+id/windowLostThreshold"
                     android:layout_width="match_parent"
