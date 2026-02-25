@@ -1,26 +1,22 @@
-# Keep Kotlin classes
--keep class kotlin.** { *; }
--keep class kotlin.Metadata { *; }
+# Add project specific ProGuard rules here.
 
-# Keep data classes for Room
+# Keep data models for Room
 -keep class com.albion.marketassistant.data.** { *; }
 
-# Keep all classes that are used by Room
--keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Entity class *
--dontwarn androidx.room.paging.**
-
-# Keep accessibility service
+# Keep Accessibility Service
 -keep class com.albion.marketassistant.accessibility.** { *; }
 
 # Keep ML Kit classes
 -keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
 
-# OkHttp
--dontwarn okhttp3.**
--dontwarn okio.**
+# Keep Kotlin coroutines
+-keepclassmembers class kotlinx.coroutines.** {
+    volatile <fields>;
+}
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
 
-# Gson
--keepattributes Signature
--keepattributes *Annotation*
+# Keep Room generated classes
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-dontwarn androidx.room.paging.**
