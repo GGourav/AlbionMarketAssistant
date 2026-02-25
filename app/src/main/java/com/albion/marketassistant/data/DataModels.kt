@@ -9,33 +9,26 @@ import androidx.room.Embedded
  * Configuration for Create Buy Order mode
  */
 data class CreateModeConfig(
-    // Row coordinates for tapping market rows
     val firstRowX: Int = 100,
     val firstRowY: Int = 300,
     val rowYOffset: Int = 80,
     val maxRowsPerScreen: Int = 5,
-
-    // Price input box coordinates
     val priceInputX: Int = 300,
     val priceInputY: Int = 400,
     val priceInputRegionLeft: Int = 200,
     val priceInputRegionTop: Int = 380,
     val priceInputRegionRight: Int = 450,
     val priceInputRegionBottom: Int = 420,
-
-    // Create Order button coordinates
     val createButtonX: Int = 500,
     val createButtonY: Int = 550,
-
-    // OCR scan region for price reading
     val ocrRegionLeft: Int = 600,
     val ocrRegionTop: Int = 200,
     val ocrRegionRight: Int = 1050,
     val ocrRegionBottom: Int = 500,
-
-    // Confirmation popup "Yes" button
     val confirmYesX: Int = 500,
-    val confirmYesY: Int = 600
+    val confirmYesY: Int = 600,
+    val closeButtonX: Int = 1000,
+    val closeButtonY: Int = 200
 ) {
     fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
     fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
@@ -45,34 +38,23 @@ data class CreateModeConfig(
  * Configuration for Edit Buy Order mode
  */
 data class EditModeConfig(
-    // Edit button coordinates (per row)
     val editButtonX: Int = 950,
     val editButtonY: Int = 300,
     val editButtonYOffset: Int = 80,
-
-    // Price input box coordinates
     val priceInputX: Int = 300,
     val priceInputY: Int = 400,
     val priceInputRegionLeft: Int = 200,
     val priceInputRegionTop: Int = 380,
     val priceInputRegionRight: Int = 450,
     val priceInputRegionBottom: Int = 420,
-
-    // Update Order button coordinates
     val updateButtonX: Int = 500,
     val updateButtonY: Int = 550,
-
-    // OCR scan region for price reading
     val ocrRegionLeft: Int = 600,
     val ocrRegionTop: Int = 200,
     val ocrRegionRight: Int = 1050,
     val ocrRegionBottom: Int = 500,
-
-    // Confirmation popup "Yes" button
     val confirmYesX: Int = 500,
     val confirmYesY: Int = 600,
-
-    // Close button coordinates
     val closeButtonX: Int = 1000,
     val closeButtonY: Int = 200
 ) {
@@ -84,65 +66,61 @@ data class EditModeConfig(
  * Global settings shared between modes
  */
 data class GlobalSettings(
-    // Swipe settings for scrolling
     val swipeStartX: Int = 500,
     val swipeStartY: Int = 600,
     val swipeEndX: Int = 500,
     val swipeEndY: Int = 300,
     val swipeDurationMs: Int = 300,
-
-    // Timing settings (milliseconds)
-    val tapDurationMs: Long = 150,  // 150ms for heavy 3D game
+    val tapDurationMs: Long = 150,
     val textInputDelayMs: Long = 200,
     val popupOpenWaitMs: Long = 800,
     val popupCloseWaitMs: Long = 600,
     val confirmationWaitMs: Long = 500,
     val ocrScanDelayMs: Long = 300,
     val keyboardDismissDelayMs: Long = 300,
-
-    // Color detection
+    val networkLagMultiplier: Float = 1.0f,
+    val cycleCooldownMs: Long = 200,
     val highlightedRowColorHex: String = "#E8E8E8",
     val colorToleranceRGB: Int = 30,
-
-    // OCR settings
     val ocrConfidenceThreshold: Float = 0.7f,
     val ocrLanguage: String = "en"
+)
+
+/**
+ * Safety settings to prevent financial loss
+ */
+data class SafetySettings(
+    val maxPriceChangePercent: Float = 0.2f,
+    val maxPriceCap: Int = 100000,
+    val minPriceCap: Int = 1,
+    val enableOcrSanityCheck: Boolean = true,
+    val maxRetries: Int = 3,
+    val uiTimeoutMs: Long = 3000,
+    val autoDismissErrors: Boolean = true
 )
 
 @Entity(tableName = "calibration_data")
 data class CalibrationData(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-
     @Embedded(prefix = "create_")
     val createMode: CreateModeConfig = CreateModeConfig(),
-
     @Embedded(prefix = "edit_")
     val editMode: EditModeConfig = EditModeConfig(),
-
     @Embedded(prefix = "global_")
     val global: GlobalSettings = GlobalSettings(),
-
+    @Embedded(prefix = "safety_")
+    val safety: SafetySettings = SafetySettings(),
     val lastModified: Long = System.currentTimeMillis()
 )
 
 enum class OperationMode { IDLE, NEW_ORDER_SWEEPER, ORDER_EDITOR }
 
 enum class StateType {
-    IDLE,
-    PAUSED,
-    WAIT_POPUP_OPEN,
-    SCAN_HIGHLIGHTS,
-    SCAN_OCR,
-    EXECUTE_TAP,
-    EXECUTE_TEXT_INPUT,
-    EXECUTE_BUTTON,
-    HANDLE_CONFIRMATION,
-    DISMISS_KEYBOARD,
-    WAIT_POPUP_CLOSE,
-    SCROLL_NEXT_ROW,
-    COMPLETE_ITERATION,
-    ERROR_RETRY
+    IDLE, PAUSED, WAIT_POPUP_OPEN, SCAN_HIGHLIGHTS, SCAN_OCR, VERIFY_UI_ELEMENT,
+    EXECUTE_TAP, EXECUTE_TEXT_INPUT, EXECUTE_BUTTON, HANDLE_CONFIRMATION,
+    HANDLE_ERROR_POPUP, DISMISS_KEYBOARD, WAIT_POPUP_CLOSE, SCROLL_NEXT_ROW,
+    COMPLETE_ITERATION, ERROR_RETRY, ERROR_PRICE_SANITY, ERROR_TIMEOUT, COOLDOWN
 }
 
 data class AutomationState(
@@ -155,6 +133,8 @@ data class AutomationState(
     val colorDetected: Boolean = false,
     val errorMessage: String? = null,
     val isPaused: Boolean = false,
+    val retryCount: Int = 0,
+    val lastPrice: Int? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
