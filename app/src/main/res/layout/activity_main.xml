@@ -33,7 +33,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Status"
+                android:text="📋 Status"
                 android:textSize="16sp"
                 android:textStyle="bold"/>
 
@@ -50,6 +50,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Overlay Permission: Checking..."
+                android:textSize="14sp"
+                android:layout_marginTop="4dp"/>
+
+            <TextView
+                android:id="@+id/tvScreenCaptureStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Screen Capture: Checking..."
                 android:textSize="14sp"
                 android:layout_marginTop="4dp"/>
 
@@ -74,7 +82,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Quick Actions"
+                android:text="⚡ Quick Actions"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp"/>
@@ -110,6 +118,14 @@
                 android:backgroundTint="@color/error"
                 android:layout_marginTop="8dp"/>
 
+            <Button
+                android:id="@+id/btnRequestScreenCapture"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📺 Grant Screen Capture"
+                android:backgroundTint="@color/warning"
+                android:layout_marginTop="8dp"/>
+
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
@@ -131,7 +147,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📋 Instructions"
+                android:text="📋 Setup Instructions"
                 android:textSize="16sp"
                 android:textStyle="bold"/>
 
@@ -152,21 +168,29 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="3. Open Settings to configure coordinates"
+                android:text="3. Grant Screen Capture for OCR to work"
+                android:textSize="13sp"
+                android:textColor="#FF5722"
+                android:layout_marginTop="4dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4. Open Settings to configure coordinates"
                 android:textSize="13sp"
                 android:layout_marginTop="4dp"/>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="4. Open Albion Online market"
+                android:text="5. Open Albion Online market"
                 android:textSize="13sp"
                 android:layout_marginTop="4dp"/>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="5. Press Create/Edit to start automation"
+                android:text="6. Press Create/Edit to start automation"
                 android:textSize="13sp"
                 android:layout_marginTop="4dp"/>
 
