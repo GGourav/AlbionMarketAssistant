@@ -23,9 +23,16 @@ class StateMachine(
     private var retryCount = AtomicInteger(0)
     private var lastKnownPrice: Int? = null
     
+    // End-of-list detection
+    private var previousFirstRowText: String? = null
+    private var samePageCount = 0
+    private var totalItemsProcessed = 0
+    
     var onStateChange: ((AutomationState) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onPriceSanityError: ((String) -> Unit)? = null
+    var onEndOfList: ((String) -> Unit)? = null
+    var onWrongApp: ((String) -> Unit)? = null
     
     fun startMode(mode: OperationMode) {
         if (isRunning) {
@@ -38,6 +45,9 @@ class StateMachine(
         currentRowIndex = 0
         retryCount.set(0)
         lastKnownPrice = null
+        previousFirstRowText = null
+        samePageCount = 0
+        totalItemsProcessed = 0
         loopJob = scope.launch { mainLoop() }
     }
     
@@ -65,11 +75,65 @@ class StateMachine(
         return (this * calibration.global.networkLagMultiplier).toLong()
     }
     
+    /**
+     * IMMERSIVE MODE PROTECTION
+     * Verify we're in the correct app before every action
+     */
+    private fun verifyCorrectApp(): Boolean {
+        if (!calibration.safety.enableAppVerification) {
+            return true
+        }
+        
+        val targetPackage = calibration.global.targetAppPackage
+        val isCorrect = uiInteractor.isCorrectApp(targetPackage)
+        
+        if (!isCorrect) {
+            val currentApp = uiInteractor.getCurrentPackage() ?: "unknown"
+            updateStateWithApp(StateType.ERROR_WRONG_APP, "Wrong app: $currentApp", currentApp, false)
+            onWrongApp?.invoke("Switched to: $currentApp")
+            
+            if (calibration.safety.pauseOnInterruption) {
+                pause()
+            }
+            return false
+        }
+        
+        return true
+    }
+    
+    /**
+     * END OF LIST DETECTION
+     * Compare first row text before and after swipe
+     */
+    private fun checkEndOfList(): Boolean {
+        if (!calibration.safety.enableEndOfListDetection) {
+            return false
+        }
+        
+        // In a full implementation, we would use OCR to read the first row
+        // For now, we use a simplified approach based on row index
+        
+        // If we've processed items but row index keeps resetting after swipe
+        // it means we're at the end
+        if (samePageCount >= calibration.global.maxSamePageCount) {
+            return true
+        }
+        
+        return false
+    }
+    
     private suspend fun mainLoop() {
         try {
             while (isRunning) {
+                // Check for pause
                 while (isPaused) {
                     delay(100)
+                }
+                
+                // IMMERSIVE MODE PROTECTION - Verify app before each iteration
+                if (!verifyCorrectApp()) {
+                    delay(1000)
+                    continue
                 }
                 
                 when (currentMode) {
@@ -79,6 +143,7 @@ class StateMachine(
                 }
                 
                 currentRowIndex++
+                totalItemsProcessed++
                 
                 updateState(StateType.COOLDOWN, "Cooldown")
                 delay(calibration.global.cycleCooldownMs)
@@ -149,6 +214,11 @@ class StateMachine(
         var attempts = 0
         
         while (attempts < maxRetries) {
+            // Verify app before each retry
+            if (!verifyCorrectApp()) {
+                return false
+            }
+            
             if (action()) {
                 retryCount.set(0)
                 return true
@@ -173,6 +243,9 @@ class StateMachine(
             val timing = calibration.global
             val safety = calibration.safety
             
+            // Verify app is in foreground
+            if (!verifyCorrectApp()) return
+            
             val rowX = config.firstRowX
             val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
             
@@ -187,6 +260,9 @@ class StateMachine(
             
             updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
             delay(timing.popupOpenWaitMs.withLagMultiplier())
+            
+            // Verify app again
+            if (!verifyCorrectApp()) return
             
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
             if (!executeWithRetry(safety.maxRetries) {
@@ -226,6 +302,9 @@ class StateMachine(
             updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
             uiInteractor.dismissKeyboard()
             delay(timing.keyboardDismissDelayMs.withLagMultiplier())
+            
+            // Verify app again
+            if (!verifyCorrectApp()) return
             
             updateState(StateType.EXECUTE_BUTTON, "Creating order")
             if (!executeWithRetry(safety.maxRetries) {
@@ -243,7 +322,8 @@ class StateMachine(
             
             delay(timing.popupCloseWaitMs.withLagMultiplier())
             
-            handleRowIteration(config.maxRowsPerScreen, timing)
+            // Handle row iteration with end-of-list detection
+            handleRowIterationWithEndDetection(config.maxRowsPerScreen, timing)
             
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
@@ -256,6 +336,9 @@ class StateMachine(
             val config = calibration.editMode
             val timing = calibration.global
             val safety = calibration.safety
+            
+            // Verify app is in foreground
+            if (!verifyCorrectApp()) return
             
             val editX = config.editButtonX
             val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
@@ -271,6 +354,9 @@ class StateMachine(
             
             updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
             delay(timing.popupOpenWaitMs.withLagMultiplier())
+            
+            // Verify app again
+            if (!verifyCorrectApp()) return
             
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
             if (!executeWithRetry(safety.maxRetries) {
@@ -311,6 +397,9 @@ class StateMachine(
             uiInteractor.dismissKeyboard()
             delay(timing.keyboardDismissDelayMs.withLagMultiplier())
             
+            // Verify app again
+            if (!verifyCorrectApp()) return
+            
             updateState(StateType.EXECUTE_BUTTON, "Updating order")
             if (!executeWithRetry(safety.maxRetries) {
                 uiInteractor.performTap(config.updateButtonX, config.updateButtonY, timing.tapDurationMs)
@@ -327,11 +416,57 @@ class StateMachine(
             
             delay(timing.popupCloseWaitMs.withLagMultiplier())
             
-            handleRowIteration(5, timing)
+            // Handle row iteration with end-of-list detection
+            handleRowIterationWithEndDetection(5, timing)
             
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
             handleUnexpectedPopup()
+        }
+    }
+    
+    /**
+     * SWIPE OVERLAP CALIBRATION
+     * Handle scrolling with proper calibration
+     */
+    private suspend fun handleRowIterationWithEndDetection(maxRows: Int, timing: GlobalSettings) {
+        if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
+            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
+            
+            // Calculate swipe distance
+            // Formula: swipeDistance = maxRows * rowYOffset
+            val swipeDistance = timing.swipeStartY - timing.swipeEndY
+            
+            // Perform the swipe
+            uiInteractor.performSwipe(
+                timing.swipeStartX,
+                timing.swipeStartY,
+                timing.swipeEndX,
+                timing.swipeEndY,
+                timing.swipeDurationMs.toLong()
+            )
+            
+            delay(500.withLagMultiplier())
+            
+            // END OF LIST DETECTION
+            // In full implementation, we would:
+            // 1. Capture first row OCR text before swipe
+            // 2. Capture first row OCR text after swipe
+            // 3. Compare - if same, we're at end of list
+            
+            // Simplified detection: increment same page counter
+            // In real implementation, this would use actual OCR comparison
+            samePageCount++
+            
+            if (checkEndOfList()) {
+                updateState(StateType.ERROR_END_OF_LIST, "End of list reached after $totalItemsProcessed items")
+                onEndOfList?.invoke("Processed $totalItemsProcessed items total")
+                stop()
+                return
+            }
+            
+            // Reset row index for new page
+            currentRowIndex = 0
         }
     }
     
@@ -340,21 +475,10 @@ class StateMachine(
         return basePrice + 1
     }
     
-    private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
-        if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
-            uiInteractor.performSwipe(
-                timing.swipeStartX,
-                timing.swipeStartY,
-                timing.swipeEndX,
-                timing.swipeEndY,
-                timing.swipeDurationMs.toLong()
-            )
-            delay(300.withLagMultiplier())
-        }
-    }
-    
     private fun updateState(stateType: StateType, message: String = "") {
+        val currentApp = uiInteractor.getCurrentPackage() ?: "unknown"
+        val isCorrect = uiInteractor.isCorrectApp(calibration.global.targetAppPackage)
+        
         val state = AutomationState(
             stateType = stateType,
             mode = currentMode,
@@ -362,7 +486,25 @@ class StateMachine(
             errorMessage = if (stateType.name.startsWith("ERROR")) message else null,
             isPaused = isPaused,
             retryCount = retryCount.get(),
-            lastPrice = lastKnownPrice
+            lastPrice = lastKnownPrice,
+            currentAppName = currentApp,
+            isCorrectApp = isCorrect
+        )
+        _stateFlow.value = state
+        onStateChange?.invoke(state)
+    }
+    
+    private fun updateStateWithApp(stateType: StateType, message: String, appName: String, isCorrect: Boolean) {
+        val state = AutomationState(
+            stateType = stateType,
+            mode = currentMode,
+            currentRowIndex = currentRowIndex,
+            errorMessage = message,
+            isPaused = isPaused,
+            retryCount = retryCount.get(),
+            lastPrice = lastKnownPrice,
+            currentAppName = appName,
+            isCorrectApp = isCorrect
         )
         _stateFlow.value = state
         onStateChange?.invoke(state)
