@@ -1,277 +1,437 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:orientation="vertical">
 
-    <LinearLayout
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:background="#1E88E5"
+        app:tabTextColor="#FFFFFF"
+        app:tabSelectedTextColor="#FFFFFF"
+        app:tabIndicatorColor="#FFFFFF"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Calibration Settings"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Row Positions"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"/>
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="12dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etFirstRowX"
-                android:layout_width="0dp"
-                android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- CREATE MODE LAYOUT -->
+            <LinearLayout
+                android:id="@+id/createModeLayout"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="First Row X"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etFirstRowY"
-                android:layout_width="0dp"
-                android:layout_weight="1"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Create Buy Orders"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#4CAF50"
+                    android:layout_marginBottom="8dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Row Coordinates"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createFirstRowX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Row X"/>
+                    <EditText android:id="@+id/createFirstRowY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Row Y"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/createRowYOffset"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Y Offset"/>
+                    <EditText android:id="@+id/createMaxRows"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Max Rows"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Price Input Box"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createPriceX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Price X"/>
+                    <EditText android:id="@+id/createPriceY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Price Y"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Create Button"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createButtonX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Button X"/>
+                    <EditText android:id="@+id/createButtonY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Button Y"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Confirmation 'Yes' Button"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createConfirmYesX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Yes X"/>
+                    <EditText android:id="@+id/createConfirmYesY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Yes Y"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="OCR Scan Region"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createOcrLeft"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Left"/>
+                    <EditText android:id="@+id/createOcrTop"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Top"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/createOcrRight"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Right"/>
+                    <EditText android:id="@+id/createOcrBottom"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Bottom"/>
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- EDIT MODE LAYOUT -->
+            <LinearLayout
+                android:id="@+id/editModeLayout"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="First Row Y"
-                android:inputType="number"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:visibility="gone">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etRowYOffset"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Row Y Offset"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etMaxRows"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Max Rows/Screen"
-                android:inputType="number"/>
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Edit Buy Orders"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#2196F3"
+                    android:layout_marginBottom="8dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Button Positions"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Edit Button Coordinates"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etConfirmX"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Confirm Button X"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etConfirmY"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Confirm Button Y"
-                android:inputType="number"/>
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/editButtonX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Edit X"/>
+                    <EditText android:id="@+id/editButtonY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Edit Y"/>
+                </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etCloseX"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Close Button X"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etCloseY"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Close Button Y"
-                android:inputType="number"/>
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/editYOffset"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Y Offset"/>
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"/>
+                </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Swipe Settings"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Price Input Box"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etSwipeStartX"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Swipe Start X"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etSwipeStartY"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Swipe Start Y"
-                android:inputType="number"/>
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/editPriceX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Price X"/>
+                    <EditText android:id="@+id/editPriceY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Price Y"/>
+                </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etSwipeEndX"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Swipe End X"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etSwipeEndY"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Swipe End Y"
-                android:inputType="number"/>
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Update Button"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
 
-        <EditText
-            android:id="@+id/etSwipeDuration"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Swipe Duration (ms)"
-            android:inputType="number"/>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/updateButtonX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Update X"/>
+                    <EditText android:id="@+id/updateButtonY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Update Y"/>
+                </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Timing (milliseconds)"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Confirmation 'Yes' Button"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etTapDuration"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Tap Duration"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etTextInputDelay"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Text Input Delay"
-                android:inputType="number"/>
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/editConfirmYesX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Yes X"/>
+                    <EditText android:id="@+id/editConfirmYesY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Yes Y"/>
+                </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/etPopupOpenWait"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Popup Open Wait"
-                android:inputType="number"/>
-            <EditText
-                android:id="@+id/etPopupCloseWait"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:hint="Popup Close Wait"
-                android:inputType="number"/>
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="OCR Scan Region"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Color Detection"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp"/>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/editOcrLeft"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Left"/>
+                    <EditText android:id="@+id/editOcrTop"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Top"/>
+                </LinearLayout>
 
-        <EditText
-            android:id="@+id/etHighlightColor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Highlight Row Color (hex, e.g. #E8E8E8)"/>
-
-        <EditText
-            android:id="@+id/etColorTolerance"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Color Tolerance RGB (0-255)"
-            android:inputType="number"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="24dp">
-
-            <Button
-                android:id="@+id/btnSaveCalibration"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Save Settings"
-                android:layout_marginEnd="8dp"/>
-
-            <Button
-                android:id="@+id/btnResetCalibration"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Reset to Defaults"
-                android:backgroundTint="#FF5722"/>
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnBack"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Back to Main"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#607D8B"/>
-
-    </LinearLayout>
-</ScrollView>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <EditText android:id="@+id/editOcrRight"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="R
