@@ -106,6 +106,9 @@ class CalibrationActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.createOcrTop).setText(data.createMode.ocrRegionTop.toString())
         findViewById<EditText>(R.id.createOcrRight).setText(data.createMode.ocrRegionRight.toString())
         findViewById<EditText>(R.id.createOcrBottom).setText(data.createMode.ocrRegionBottom.toString())
+        // FIXED: Added default price and increment fields
+        findViewById<EditText>(R.id.createDefaultPrice).setText(data.createMode.defaultBuyPrice.toString())
+        findViewById<EditText>(R.id.createPriceIncrement).setText(data.createMode.priceIncrement.toString())
 
         // Edit Mode fields
         findViewById<EditText>(R.id.editButtonX).setText(data.editMode.editButtonX.toString())
@@ -157,6 +160,7 @@ class CalibrationActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.identicalPageThreshold).setText(data.endOfList.identicalPageThreshold.toString())
         findViewById<EditText>(R.id.maxCyclesBeforeStop).setText(data.endOfList.maxCyclesBeforeStop.toString())
 
+        // FIXED: Default package name is now "com.albiononline"
         findViewById<CheckBox>(R.id.enableWindowVerification).isChecked = data.immersiveMode.enableWindowVerification
         findViewById<EditText>(R.id.gamePackageName).setText(data.immersiveMode.gamePackageName)
         findViewById<EditText>(R.id.windowLostThreshold).setText(data.immersiveMode.windowLostThreshold.toString())
@@ -197,7 +201,10 @@ class CalibrationActivity : AppCompatActivity() {
                 ocrRegionLeft = getInt(R.id.createOcrLeft, 600),
                 ocrRegionTop = getInt(R.id.createOcrTop, 200),
                 ocrRegionRight = getInt(R.id.createOcrRight, 1050),
-                ocrRegionBottom = getInt(R.id.createOcrBottom, 500)
+                ocrRegionBottom = getInt(R.id.createOcrBottom, 500),
+                // FIXED: Added default price and increment
+                defaultBuyPrice = getInt(R.id.createDefaultPrice, 10000),
+                priceIncrement = getInt(R.id.createPriceIncrement, 1)
             )
 
             val editConfig = EditModeConfig(
