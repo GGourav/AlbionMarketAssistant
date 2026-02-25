@@ -187,6 +187,36 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="Close Button (for errors)"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <EditText android:id="@+id/createCloseX"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Close X"/>
+                    <EditText android:id="@+id/createCloseY"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:inputType="number"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:hint="Close Y"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:text="OCR Scan Region"
                     android:textStyle="bold"
                     android:layout_marginTop="12dp"/>
@@ -396,7 +426,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="OCR Scan Region"
+                    android:text="Close Button"
                     android:textStyle="bold"
                     android:layout_marginTop="12dp"/>
 
@@ -405,33 +435,4 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:layout_marginTop="4dp">
-                    <EditText android:id="@+id/editOcrLeft"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:inputType="number"
-                        android:textSize="12sp"
-                        android:padding="8dp"
-                        android:hint="Left"/>
-                    <EditText android:id="@+id/editOcrTop"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:inputType="number"
-                        android:textSize="12sp"
-                        android:padding="8dp"
-                        android:hint="Top"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-                    <EditText android:id="@+id/editOcrRight"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:inputType="number"
-                        android:textSize="12sp"
-                        android:padding="8dp"
-                        android:hint="R
+                    <EditText android:id="@+id/ed
