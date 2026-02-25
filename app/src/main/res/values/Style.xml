@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="Theme.AlbionMarketAssistant" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">#1E88E5</item>
+        <item name="colorPrimaryDark">#1565C0</item>
+        <item name="colorAccent">#4CAF50</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryDark</item>
+        <item name="android:navigationBarColor">?attr/colorPrimaryDark</item>
+    </style>
+    
+    <!-- Card style -->
+    <style name="CardStyle" parent="Widget.MaterialComponents.CardView">
+        <item name="cardCornerRadius">8dp</item>
+        <item name="cardElevation">4dp</item>
+        <item name="cardUseCompatPadding">true</item>
+    </style>
+    
+    <!-- Button styles -->
+    <style name="ButtonStyle" parent="Widget.MaterialComponents.Button">
+        <item name="cornerRadius">8dp</item>
+        <item name="textAllCaps">false</item>
+    </style>
+    
+    <style name="ButtonStyle.Primary" parent="ButtonStyle">
+        <item name="backgroundTint">#4CAF50</item>
+    </style>
+    
+    <style name="ButtonStyle.Danger" parent="ButtonStyle">
+        <item name="backgroundTint">#F44336</item>
+    </style>
+    
+    <style name="ButtonStyle.Warning" parent="ButtonStyle">
+        <item name="backgroundTint">#FF9800</item>
+    </style>
+    
+    <!-- Input style -->
+    <style name="InputStyle" parent="Widget.MaterialComponents.TextInputLayout.FilledBox">
+        <item name="boxCornerRadiusTopStart">8dp</item>
+        <item name="boxCornerRadiusTopEnd">8dp</item>
+    </style>
+</resources>
