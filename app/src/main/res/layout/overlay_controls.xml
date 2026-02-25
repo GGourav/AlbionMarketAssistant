@@ -6,18 +6,33 @@
     android:padding="6dp"
     android:orientation="vertical">
 
+    <!-- Status display with colored background -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Ready"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:padding="4dp"
+        android:background="#4CAF50"
+        android:layout_gravity="center"/>
+
+    <!-- Compact horizontal button row -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:layout_marginTop="3dp">
 
         <Button
             android:id="@+id/btnCreate"
-            android:layout_width="52dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="28dp"
             android:text="C"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:padding="0dp"
             android:minWidth="0dp"
@@ -26,51 +41,87 @@
 
         <Button
             android:id="@+id/btnEdit"
-            android:layout_width="52dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="28dp"
             android:text="E"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:padding="0dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:backgroundTint="#2196F3"
-            android:layout_marginStart="3dp"/>
+            android:layout_marginStart="2dp"/>
 
         <Button
             android:id="@+id/btnPause"
-            android:layout_width="52dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="28dp"
             android:text="⏸"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:padding="0dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:backgroundTint="#FF9800"
-            android:layout_marginStart="3dp"/>
+            android:layout_marginStart="2dp"/>
 
         <Button
             android:id="@+id/btnStop"
-            android:layout_width="52dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="28dp"
             android:text="⏹"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:padding="0dp"
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:backgroundTint="#F44336"
-            android:layout_marginStart="3dp"/>
+            android:layout_marginStart="2dp"/>
 
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvStatus"
+    <!-- Secondary button row -->
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Ready"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="2dp">
+
+        <Button
+            android:id="@+id/btnStats"
+            android:layout_width="60dp"
+            android:layout_height="26dp"
+            android:text="📊 Stats"
+            android:textSize="9sp"
+            android:padding="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:backgroundTint="#9C27B0"/>
+
+        <Button
+            android:id="@+id/btnExport"
+            android:layout_width="60dp"
+            android:layout_height="26dp"
+            android:text="💾 Save"
+            android:textSize="9sp"
+            android:padding="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:backgroundTint="#607D8B"
+            android:layout_marginStart="2dp"/>
+
+    </LinearLayout>
+
+    <!-- Expandable Statistics Panel -->
+    <TextView
+        android:id="@+id/tvStats"
+        android:layout_width="180dp"
+        android:layout_height="wrap_content"
+        android:text=""
         android:textColor="#FFFFFF"
         android:textSize="9sp"
-        android:layout_marginTop="2dp"
-        android:layout_gravity="center"/>
+        android:fontFamily="monospace"
+        android:padding="6dp"
+        android:visibility="gone"
+        android:layout_marginTop="4dp"/>
 
 </LinearLayout>
