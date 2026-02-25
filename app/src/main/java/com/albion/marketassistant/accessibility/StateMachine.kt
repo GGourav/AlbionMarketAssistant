@@ -367,10 +367,10 @@ class StateMachine(
         }
 
         performTapWithRandomization(closeX, closeY)
-        delay(300.withDelays())
+        delay(300L.withDelays())
 
         uiInteractor.dismissKeyboard()
-        delay(300.withDelays())
+        delay(300L.withDelays())
     }
 
     private fun performTapWithRandomization(x: Int, y: Int): Boolean {
@@ -504,7 +504,7 @@ class StateMachine(
                 return
             }
 
-            delay(100.withDelays())
+            delay(100L.withDelays())
 
             val priceToInject = calculatePrice()
             val validation = validatePrice(priceToInject)
@@ -521,7 +521,7 @@ class StateMachine(
 
             updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
             uiInteractor.clearTextField()
-            delay(50.withDelays())
+            delay(50L.withDelays())
 
             if (!uiInteractor.injectText(priceToInject.toString())) {
                 updateState(StateType.ERROR_RETRY, "Failed to inject text")
@@ -609,7 +609,7 @@ class StateMachine(
                 return
             }
 
-            delay(100.withDelays())
+            delay(100L.withDelays())
 
             val priceToInject = calculatePrice()
             val validation = validatePrice(priceToInject)
@@ -626,7 +626,7 @@ class StateMachine(
 
             updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
             uiInteractor.clearTextField()
-            delay(50.withDelays())
+            delay(50L.withDelays())
 
             if (!uiInteractor.injectText(priceToInject.toString())) {
                 updateState(StateType.ERROR_RETRY, "Failed to inject text")
