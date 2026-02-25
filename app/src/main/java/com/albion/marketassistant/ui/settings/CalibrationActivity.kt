@@ -106,7 +106,7 @@ class CalibrationActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.createOcrTop).setText(data.createMode.ocrRegionTop.toString())
         findViewById<EditText>(R.id.createOcrRight).setText(data.createMode.ocrRegionRight.toString())
         findViewById<EditText>(R.id.createOcrBottom).setText(data.createMode.ocrRegionBottom.toString())
-        // FIXED: Added default price and increment fields
+        // Default price and increment fields
         findViewById<EditText>(R.id.createDefaultPrice).setText(data.createMode.defaultBuyPrice.toString())
         findViewById<EditText>(R.id.createPriceIncrement).setText(data.createMode.priceIncrement.toString())
 
@@ -159,8 +159,13 @@ class CalibrationActivity : AppCompatActivity() {
         findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked = data.endOfList.enableEndOfListDetection
         findViewById<EditText>(R.id.identicalPageThreshold).setText(data.endOfList.identicalPageThreshold.toString())
         findViewById<EditText>(R.id.maxCyclesBeforeStop).setText(data.endOfList.maxCyclesBeforeStop.toString())
+        // NEW: End of List OCR region fields
+        findViewById<EditText>(R.id.firstLineOcrLeft).setText(data.endOfList.firstLineOcrLeft.toString())
+        findViewById<EditText>(R.id.firstLineOcrTop).setText(data.endOfList.firstLineOcrTop.toString())
+        findViewById<EditText>(R.id.firstLineOcrRight).setText(data.endOfList.firstLineOcrRight.toString())
+        findViewById<EditText>(R.id.firstLineOcrBottom).setText(data.endOfList.firstLineOcrBottom.toString())
 
-        // FIXED: Default package name is now "com.albiononline"
+        // Default package name is now "com.albiononline"
         findViewById<CheckBox>(R.id.enableWindowVerification).isChecked = data.immersiveMode.enableWindowVerification
         findViewById<EditText>(R.id.gamePackageName).setText(data.immersiveMode.gamePackageName)
         findViewById<EditText>(R.id.windowLostThreshold).setText(data.immersiveMode.windowLostThreshold.toString())
@@ -202,7 +207,7 @@ class CalibrationActivity : AppCompatActivity() {
                 ocrRegionTop = getInt(R.id.createOcrTop, 200),
                 ocrRegionRight = getInt(R.id.createOcrRight, 1050),
                 ocrRegionBottom = getInt(R.id.createOcrBottom, 500),
-                // FIXED: Added default price and increment
+                // Default price and increment
                 defaultBuyPrice = getInt(R.id.createDefaultPrice, 10000),
                 priceIncrement = getInt(R.id.createPriceIncrement, 1)
             )
@@ -260,7 +265,12 @@ class CalibrationActivity : AppCompatActivity() {
             val endOfListConfig = EndOfListSettings(
                 enableEndOfListDetection = findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked,
                 identicalPageThreshold = getInt(R.id.identicalPageThreshold, 3),
-                maxCyclesBeforeStop = getInt(R.id.maxCyclesBeforeStop, 500)
+                maxCyclesBeforeStop = getInt(R.id.maxCyclesBeforeStop, 500),
+                // NEW: OCR region fields
+                firstLineOcrLeft = getInt(R.id.firstLineOcrLeft, 100),
+                firstLineOcrTop = getInt(R.id.firstLineOcrTop, 300),
+                firstLineOcrRight = getInt(R.id.firstLineOcrRight, 900),
+                firstLineOcrBottom = getInt(R.id.firstLineOcrBottom, 350)
             )
 
             val immersiveModeConfig = ImmersiveModeSettings(
@@ -329,37 +339,4 @@ class CalibrationActivity : AppCompatActivity() {
     }
 
     private fun resetToDefaults() {
-        val defaultData = CalibrationData()
-        populateFields(defaultData)
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                db.calibrationDao().insertCalibration(defaultData)
-                currentCalibration = defaultData
-                withContext(Dispatchers.Main) {
-                    showToast("Reset to defaults!")
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    showToast("Error resetting: ${e.message}")
-                }
-            }
-        }
-    }
-
-    private fun getInt(id: Int, default: Int): Int {
-        return findViewById<EditText>(id).text.toString().toIntOrNull() ?: default
-    }
-
-    private fun getLong(id: Int, default: Long): Long {
-        return findViewById<EditText>(id).text.toString().toLongOrNull() ?: default
-    }
-
-    private fun getFloat(id: Int, default: Float): Float {
-        return findViewById<EditText>(id).text.toString().toFloatOrNull() ?: default
-    }
-
-    private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
-}
+        val defaultData = CalibrationData
