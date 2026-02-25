@@ -1,16 +1,21 @@
 package com.albion.marketassistant.util
 
 import android.app.ActivityManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
-import android.view.Window
-import android.view.WindowManager
+import android.util.Log
 
 class DeviceUtils(private val context: Context) {
+
+    companion object {
+        private const val TAG = "DeviceUtils"
+    }
 
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -46,19 +51,50 @@ class DeviceUtils(private val context: Context) {
         }
     }
 
+    /**
+     * Get the foreground app package name
+     * Fixed: Use UsageStatsManager for Android 5.1+
+     */
     fun getForegroundAppPackage(): String? {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                val appTasks = activityManager.appTasks
-                if (appTasks.isNotEmpty()) {
-                    appTasks[0].taskInfo.baseActivity?.packageName
-                } else {
-                    getForegroundAppPackageLegacy()
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                getForegroundAppPackageViaUsageStats()
+                    ?: getForegroundAppPackageLegacy()
             } else {
                 getForegroundAppPackageLegacy()
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error getting foreground app", e)
+            null
+        }
+    }
+
+    /**
+     * Get foreground app using UsageStatsManager (Android 5.1+)
+     */
+    private fun getForegroundAppPackageViaUsageStats(): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return null
+        
+        return try {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val endTime = System.currentTimeMillis()
+            val startTime = endTime - 10000 // Last 10 seconds
+            
+            val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+            var currentApp: String? = null
+            
+            while (usageEvents.hasNextEvent()) {
+                val event = UsageEvents.Event()
+                usageEvents.getNextEvent(event)
+                
+                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                    currentApp = event.packageName
+                }
+            }
+            
+            currentApp
+        } catch (e: Exception) {
+            Log.e(TAG, "UsageStats method failed", e)
             null
         }
     }
@@ -73,18 +109,26 @@ class DeviceUtils(private val context: Context) {
                 null
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Legacy method failed", e)
             null
         }
     }
 
-    // FIXED: Added flexible package name matching
+    /**
+     * Fixed: Correct package name matching logic
+     */
     fun isAppInForeground(packageName: String): Boolean {
         val foregroundPackage = getForegroundAppPackage() ?: return false
-        // Exact match or prefix match (handles variations like com.albiononline vs com.albiononline.albiononline)
-        return foregroundPackage == packageName || 
-               foregroundPackage.startsWith("$packageName.") ||
-               packageName.startsWith("${foregroundPackage}.") ||
-               foregroundPackage.startsWith(packageName)
+        
+        // Exact match
+        if (foregroundPackage == packageName) return true
+        
+        // Handle package variations (e.g., com.albiononline vs com.albiononline.albiononline)
+        // foregroundPackage.startsWith("${packageName}.") handles game launchers
+        // that prefix the base package
+        if (foregroundPackage.startsWith("$packageName.")) return true
+        
+        return false
     }
 
     fun isPowerSaveMode(): Boolean {
@@ -125,7 +169,7 @@ class DeviceUtils(private val context: Context) {
     }
 
     fun getScreenDimensions(): Pair<Int, Int> {
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val bounds = windowManager.currentWindowMetrics.bounds
             Pair(bounds.width(), bounds.height())
