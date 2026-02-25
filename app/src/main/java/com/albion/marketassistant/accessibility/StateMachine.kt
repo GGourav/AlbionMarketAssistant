@@ -4,6 +4,7 @@ import com.albion.marketassistant.data.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.atomic.AtomicInteger
 
 class StateMachine(
     private val scope: CoroutineScope,
@@ -19,9 +20,12 @@ class StateMachine(
     private var currentMode = OperationMode.IDLE
     private var currentRowIndex = 0
     private var loopJob: Job? = null
+    private var retryCount = AtomicInteger(0)
+    private var lastKnownPrice: Int? = null
     
     var onStateChange: ((AutomationState) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+    var onPriceSanityError: ((String) -> Unit)? = null
     
     fun startMode(mode: OperationMode) {
         if (isRunning) {
@@ -32,6 +36,8 @@ class StateMachine(
         isPaused = false
         currentMode = mode
         currentRowIndex = 0
+        retryCount.set(0)
+        lastKnownPrice = null
         loopJob = scope.launch { mainLoop() }
     }
     
@@ -55,10 +61,13 @@ class StateMachine(
         _stateFlow.value = AutomationState(StateType.IDLE)
     }
     
+    private fun Long.withLagMultiplier(): Long {
+        return (this * calibration.global.networkLagMultiplier).toLong()
+    }
+    
     private suspend fun mainLoop() {
         try {
             while (isRunning) {
-                // Check for pause
                 while (isPaused) {
                     delay(100)
                 }
@@ -71,157 +80,264 @@ class StateMachine(
                 
                 currentRowIndex++
                 
-                // Delay between iterations
-                delay(300)
+                updateState(StateType.COOLDOWN, "Cooldown")
+                delay(calibration.global.cycleCooldownMs)
             }
         } catch (e: CancellationException) {
-            // Normal cancellation
         } catch (e: Exception) {
             isRunning = false
             onError?.invoke("Error: ${e.message}")
         }
     }
     
-    /**
-     * CREATE ORDER WORKFLOW:
-     * 1. Tap Row -> Wait for popup
-     * 2. Tap Price Box -> Clear Text -> Inject Price
-     * 3. Tap Create Button -> Wait
-     * 4. Handle Confirmation Popup (tap Yes if appears)
-     */
+    private suspend fun handleUnexpectedPopup() {
+        val safety = calibration.safety
+        
+        if (!safety.autoDismissErrors) return
+        
+        updateState(StateType.HANDLE_ERROR_POPUP, "Handling error popup")
+        
+        val closeX = if (currentMode == OperationMode.NEW_ORDER_SWEEPER) {
+            calibration.createMode.closeButtonX
+        } else {
+            calibration.editMode.closeButtonX
+        }
+        val closeY = if (currentMode == OperationMode.NEW_ORDER_SWEEPER) {
+            calibration.createMode.closeButtonY
+        } else {
+            calibration.editMode.closeButtonY
+        }
+        
+        uiInteractor.performTap(closeX, closeY, calibration.global.tapDurationMs)
+        delay(300.withLagMultiplier())
+        
+        uiInteractor.dismissKeyboard()
+        delay(300.withLagMultiplier())
+    }
+    
+    private fun validatePrice(price: Int?): PriceValidationResult {
+        if (price == null) {
+            return PriceValidationResult(false, "Could not read price")
+        }
+        
+        val safety = calibration.safety
+        
+        if (price < safety.minPriceCap) {
+            return PriceValidationResult(false, "Price below minimum: $price")
+        }
+        
+        if (price > safety.maxPriceCap) {
+            return PriceValidationResult(false, "Price exceeds cap: $price > ${safety.maxPriceCap}")
+        }
+        
+        if (safety.enableOcrSanityCheck && lastKnownPrice != null) {
+            val changePercent = kotlin.math.abs(price - lastKnownPrice!!).toFloat() / lastKnownPrice!!
+            if (changePercent > safety.maxPriceChangePercent) {
+                return PriceValidationResult(
+                    false, 
+                    "Price change too large: ${(changePercent * 100).toInt()}%"
+                )
+            }
+        }
+        
+        return PriceValidationResult(true, "OK")
+    }
+    
+    data class PriceValidationResult(val isValid: Boolean, val message: String)
+    
+    private suspend fun executeWithRetry(maxRetries: Int, action: suspend () -> Boolean): Boolean {
+        var attempts = 0
+        
+        while (attempts < maxRetries) {
+            if (action()) {
+                retryCount.set(0)
+                return true
+            }
+            
+            attempts++
+            retryCount.set(attempts)
+            
+            if (attempts >= maxRetries) {
+                handleUnexpectedPopup()
+            }
+            
+            delay(500.withLagMultiplier())
+        }
+        
+        return false
+    }
+    
     private suspend fun executeCreateOrderLoop() {
         try {
             val config = calibration.createMode
             val timing = calibration.global
+            val safety = calibration.safety
             
-            // Step 1: Calculate row coordinates and tap
             val rowX = config.firstRowX
             val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
             
             updateState(StateType.EXECUTE_TAP, "Tapping row $currentRowIndex")
-            if (!uiInteractor.performTap(rowX, rowY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(rowX, rowY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap row")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.popupOpenWaitMs)
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
+            delay(timing.popupOpenWaitMs.withLagMultiplier())
             
-            // Step 2: Tap price input box
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap price box")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(100)
+            delay(100.withLagMultiplier())
             
-            // Clear and inject text (without keyboard)
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price")
+            val priceToInject = calculatePrice()
+            val validation = validatePrice(priceToInject)
+            
+            if (!validation.isValid) {
+                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
+                onPriceSanityError?.invoke(validation.message)
+                handleUnexpectedPopup()
+                return
+            }
+            
+            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
             uiInteractor.clearTextField()
-            delay(50)
-            if (!uiInteractor.injectText("1000")) {
+            delay(50.withLagMultiplier())
+            
+            if (!uiInteractor.injectText(priceToInject.toString())) {
                 updateState(StateType.ERROR_RETRY, "Failed to inject text")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.textInputDelayMs)
+            lastKnownPrice = priceToInject
             
-            // Dismiss keyboard if it appeared
+            delay(timing.textInputDelayMs.withLagMultiplier())
+            
+            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
             uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs)
+            delay(timing.keyboardDismissDelayMs.withLagMultiplier())
             
-            // Step 3: Tap Create button
             updateState(StateType.EXECUTE_BUTTON, "Creating order")
-            if (!uiInteractor.performTap(config.createButtonX, config.createButtonY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(config.createButtonX, config.createButtonY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap create button")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.confirmationWaitMs)
+            delay(timing.confirmationWaitMs.withLagMultiplier())
             
-            // Step 4: Handle confirmation popup
             updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
             uiInteractor.performTap(config.confirmYesX, config.confirmYesY, timing.tapDurationMs)
             
-            delay(timing.popupCloseWaitMs)
+            delay(timing.popupCloseWaitMs.withLagMultiplier())
             
-            // Step 5: Handle scrolling if needed
             handleRowIteration(config.maxRowsPerScreen, timing)
             
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            handleUnexpectedPopup()
         }
     }
     
-    /**
-     * EDIT ORDER WORKFLOW:
-     * 1. Tap Edit Button -> Wait for popup
-     * 2. Tap Price Box -> Clear Text -> Inject New Price
-     * 3. Tap Update Button -> Wait
-     * 4. Handle Confirmation Popup (tap Yes if appears)
-     */
     private suspend fun executeEditOrderLoop() {
         try {
             val config = calibration.editMode
             val timing = calibration.global
+            val safety = calibration.safety
             
-            // Step 1: Calculate edit button coordinates and tap
             val editX = config.editButtonX
             val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
             
             updateState(StateType.EXECUTE_TAP, "Tapping edit button $currentRowIndex")
-            if (!uiInteractor.performTap(editX, editY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(editX, editY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap edit button")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.popupOpenWaitMs)
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
+            delay(timing.popupOpenWaitMs.withLagMultiplier())
             
-            // Step 2: Tap price input box
             updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap price box")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(100)
+            delay(100.withLagMultiplier())
             
-            // Clear and inject text (without keyboard)
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price")
+            val priceToInject = calculatePrice()
+            val validation = validatePrice(priceToInject)
+            
+            if (!validation.isValid) {
+                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
+                onPriceSanityError?.invoke(validation.message)
+                handleUnexpectedPopup()
+                return
+            }
+            
+            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
             uiInteractor.clearTextField()
-            delay(50)
-            if (!uiInteractor.injectText("1001")) {
+            delay(50.withLagMultiplier())
+            
+            if (!uiInteractor.injectText(priceToInject.toString())) {
                 updateState(StateType.ERROR_RETRY, "Failed to inject text")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.textInputDelayMs)
+            lastKnownPrice = priceToInject
             
-            // Dismiss keyboard if it appeared
+            delay(timing.textInputDelayMs.withLagMultiplier())
+            
+            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
             uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs)
+            delay(timing.keyboardDismissDelayMs.withLagMultiplier())
             
-            // Step 3: Tap Update button
             updateState(StateType.EXECUTE_BUTTON, "Updating order")
-            if (!uiInteractor.performTap(config.updateButtonX, config.updateButtonY, timing.tapDurationMs)) {
+            if (!executeWithRetry(safety.maxRetries) {
+                uiInteractor.performTap(config.updateButtonX, config.updateButtonY, timing.tapDurationMs)
+            }) {
                 updateState(StateType.ERROR_RETRY, "Failed to tap update button")
+                handleUnexpectedPopup()
                 return
             }
             
-            delay(timing.confirmationWaitMs)
+            delay(timing.confirmationWaitMs.withLagMultiplier())
             
-            // Step 4: Handle confirmation popup
             updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
             uiInteractor.performTap(config.confirmYesX, config.confirmYesY, timing.tapDurationMs)
             
-            delay(timing.popupCloseWaitMs)
+            delay(timing.popupCloseWaitMs.withLagMultiplier())
             
-            // Step 5: Handle scrolling if needed
-            handleRowIteration(5, timing) // Default max rows for edit mode
+            handleRowIteration(5, timing)
             
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            handleUnexpectedPopup()
         }
+    }
+    
+    private fun calculatePrice(): Int {
+        val basePrice = lastKnownPrice ?: 1000
+        return basePrice + 1
     }
     
     private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
@@ -234,7 +350,7 @@ class StateMachine(
                 timing.swipeEndY,
                 timing.swipeDurationMs.toLong()
             )
-            delay(300)
+            delay(300.withLagMultiplier())
         }
     }
     
@@ -243,8 +359,10 @@ class StateMachine(
             stateType = stateType,
             mode = currentMode,
             currentRowIndex = currentRowIndex,
-            errorMessage = if (stateType == StateType.ERROR_RETRY) message else null,
-            isPaused = isPaused
+            errorMessage = if (stateType.name.startsWith("ERROR")) message else null,
+            isPaused = isPaused,
+            retryCount = retryCount.get(),
+            lastPrice = lastKnownPrice
         )
         _stateFlow.value = state
         onStateChange?.invoke(state)
