@@ -17,27 +17,26 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Select Automation Mode"
-        android:textSize="16sp"
-        android:textColor="#666666"
+        android:text="Step 1: Enable Accessibility Service"
+        android:textSize="14sp"
+        android:textColor="#FF5722"
         android:layout_marginBottom="24dp"/>
 
     <Button
         android:id="@+id/btnNewOrderSweeper"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🛒 Create Buy Orders"
+        android:text="Open Accessibility Settings"
         android:textSize="16sp"
         android:padding="16dp"
         android:layout_marginBottom="12dp"/>
 
-    <Button
-        android:id="@+id/btnOrderEditor"
-        android:layout_width="match_parent"
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="✏️ Edit Buy Orders"
-        android:textSize="16sp"
-        android:padding="16dp"
+        android:text="Then use overlay buttons to start modes"
+        android:textSize="12sp"
+        android:textColor="#666666"
         android:layout_marginBottom="24dp"/>
 
     <View
@@ -47,10 +46,19 @@
         android:layout_marginBottom="24dp"/>
 
     <Button
-        android:id="@+id/btnCalibration"
+        android:id="@+id/btnOrderEditor"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="⚙️ Calibration Settings"
-        android:backgroundTint="#607D8B"/>
+        android:text="Calibration Settings"
+        android:backgroundTint="#607D8B"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Overlay Buttons:\nC = Create Orders\nE = Edit Orders\n⏸ = Pause/Resume\n⏹ = Stop"
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:gravity="center"/>
 
 </LinearLayout>
