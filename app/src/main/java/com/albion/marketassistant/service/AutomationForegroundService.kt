@@ -47,6 +47,7 @@ class AutomationForegroundService : Service() {
     private var pendingMode: OperationMode? = null
     private var currentMode: OperationMode? = null
     private var floatingOverlayManager: FloatingOverlayManager? = null
+    private var totalItemsProcessed = 0
     
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -210,11 +211,19 @@ class AutomationForegroundService : Service() {
                     
                     when (state.stateType) {
                         StateType.ERROR_PRICE_SANITY -> {
-                            showToast("⚠️ PRICE SANITY ERROR: ${state.errorMessage}")
+                            showToast("⚠️ PRICE ERROR: ${state.errorMessage}")
                             floatingOverlayManager?.updateStatus("PRICE ERROR!")
                         }
                         StateType.ERROR_TIMEOUT -> {
                             showToast("Timeout - retrying...")
+                        }
+                        StateType.ERROR_END_OF_LIST -> {
+                            showToast("✅ END OF LIST: ${state.errorMessage}")
+                            floatingOverlayManager?.updateStatus("DONE!")
+                        }
+                        StateType.ERROR_WRONG_APP -> {
+                            showToast("⚠️ WRONG APP: ${state.currentAppName}")
+                            floatingOverlayManager?.updateStatus("WRONG APP!")
                         }
                         else -> {}
                     }
@@ -228,7 +237,16 @@ class AutomationForegroundService : Service() {
                     floatingOverlayManager?.updateStatus("SAFETY HALT")
                     stateMachine?.pause()
                 }
+                stateMachine?.onEndOfList = { message ->
+                    showToast("✅ $message")
+                    floatingOverlayManager?.updateStatus("COMPLETE!")
+                }
+                stateMachine?.onWrongApp = { appName ->
+                    showToast("⚠️ Switched to: $appName - Pausing")
+                    floatingOverlayManager?.updateStatus("PAUSED!")
+                }
                 
+                totalItemsProcessed = 0
                 stateMachine?.startMode(mode)
                 currentMode = mode
                 showToast("$mode started")
