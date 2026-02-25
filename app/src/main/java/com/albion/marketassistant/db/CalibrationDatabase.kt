@@ -23,7 +23,7 @@ interface CalibrationDao {
     suspend fun updateCalibration(calibration: CalibrationData)
 }
 
-@Database(entities = [CalibrationData::class], version = 1, exportSchema = false)
+@Database(entities = [CalibrationData::class], version = 2, exportSchema = false)
 abstract class CalibrationDatabase : RoomDatabase() {
     abstract fun calibrationDao(): CalibrationDao
     
@@ -37,7 +37,7 @@ abstract class CalibrationDatabase : RoomDatabase() {
                     context.applicationContext,
                     CalibrationDatabase::class.java,
                     "calibration_db"
-                ).build()
+                ).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }
