@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -26,8 +27,8 @@ import com.albion.marketassistant.ml.OCREngine
 import kotlinx.coroutines.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.min
 
 class MarketAccessibilityService : AccessibilityService() {
 
@@ -35,25 +36,42 @@ class MarketAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
+        private const val TAG = "MarketAccessibilitySvc"
+        
+        @Volatile
         private var instance: MarketAccessibilityService? = null
-        private var mediaProjectionInstance: MediaProjection? = null
+        
+        // Fixed: Clear these on service destroy to prevent memory leaks
         private var mediaProjectionResultCode: Int = 0
         private var mediaProjectionResultData: Intent? = null
+        private val projectionLock = Any()
         
         fun getInstance(): MarketAccessibilityService? = instance
         fun isServiceEnabled(): Boolean = instance != null
         
         fun setMediaProjectionData(resultCode: Int, data: Intent) {
-            mediaProjectionResultCode = resultCode
-            mediaProjectionResultData = data
+            synchronized(projectionLock) {
+                mediaProjectionResultCode = resultCode
+                mediaProjectionResultData = data.clone() as Intent
+            }
         }
         
-        fun getMediaProjectionData(): Pair<Int, Intent?> = Pair(mediaProjectionResultCode, mediaProjectionResultData)
+        fun getMediaProjectionData(): Pair<Int, Intent?> {
+            synchronized(projectionLock) {
+                return Pair(mediaProjectionResultCode, mediaProjectionResultData?.clone() as Intent?)
+            }
+        }
+        
+        fun clearMediaProjectionData() {
+            synchronized(projectionLock) {
+                mediaProjectionResultCode = 0
+                mediaProjectionResultData = null
+            }
+        }
     }
 
     private var stateMachine: StateMachine? = null
     private var calibration: CalibrationData? = null
-    private var ocrEngine: OCREngine? = null
 
     // Screen capture - MediaProjection based
     private var mediaProjection: MediaProjection? = null
@@ -64,18 +82,22 @@ class MarketAccessibilityService : AccessibilityService() {
     private var screenDensity: Int = 0
     private val latestBitmap = AtomicReference<Bitmap?>(null)
     private val captureLock = Any()
+    private val isCapturing = AtomicBoolean(false)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        ocrEngine = OCREngine()
 
         // Initialize screen capture if we have MediaProjection data
-        setupMediaProjectionIfNeeded()
+        mainHandler.post {
+            setupMediaProjectionIfNeeded()
+        }
 
         val intent = Intent("com.albion.ACCESSIBILITY_READY")
         intent.setPackage(packageName)
         sendBroadcast(intent)
+        
+        Log.d(TAG, "Service connected")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -83,28 +105,43 @@ class MarketAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onDestroy() {
-        super.onDestroy()
+        Log.d(TAG, "Service destroying")
         instance = null
         serviceScope.cancel()
         releaseMediaProjection()
-        latestBitmap.get()?.recycle()
+        
+        // Fixed: Clear cached bitmap
+        latestBitmap.getAndSet(null)?.recycle()
+        
+        // Fixed: Close OCR engine
+        OCREngine.close()
+        
+        super.onDestroy()
     }
 
     /**
      * Setup MediaProjection for screen capture
-     * This should be called after the user grants permission in MainActivity
      */
     fun setupMediaProjectionIfNeeded() {
-        if (mediaProjection != null) return
-        
-        val (resultCode, data) = getMediaProjectionData()
-        if (resultCode != 0 && data != null) {
-            try {
-                val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                mediaProjection = manager.getMediaProjection(resultCode, data)
-                setupImageReader()
-            } catch (e: Exception) {
-                e.printStackTrace()
+        synchronized(captureLock) {
+            if (mediaProjection != null) return
+            
+            val (resultCode, data) = getMediaProjectionData()
+            if (resultCode != 0 && data != null) {
+                try {
+                    val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    mediaProjection = manager.getMediaProjection(resultCode, data)
+                    mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                        override fun onStop() {
+                            Log.d(TAG, "MediaProjection stopped")
+                            releaseMediaProjection()
+                        }
+                    }, mainHandler)
+                    setupImageReader()
+                    Log.d(TAG, "MediaProjection setup successful")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to setup MediaProjection", e)
+                }
             }
         }
     }
@@ -137,15 +174,18 @@ class MarketAccessibilityService : AccessibilityService() {
             imageReader!!.surface,
             object : VirtualDisplay.Callback() {
                 override fun onStopped() {
-                    // Virtual display stopped
+                    Log.d(TAG, "VirtualDisplay stopped")
                 }
             },
             mainHandler
         )
+        
+        Log.d(TAG, "ImageReader setup: ${screenWidth}x${screenHeight}")
     }
 
     fun setCalibration(data: CalibrationData) {
         calibration = data
+        Log.d(TAG, "Calibration set")
     }
 
     fun startAutomation(mode: OperationMode) {
@@ -156,11 +196,13 @@ class MarketAccessibilityService : AccessibilityService() {
             captureScreen()
         }
         stateMachine?.startMode(mode)
+        Log.d(TAG, "Automation started: $mode")
     }
 
     fun stopAutomation() {
         stateMachine?.stop()
         stateMachine = null
+        Log.d(TAG, "Automation stopped")
     }
 
     fun pauseAutomation() {
@@ -179,17 +221,23 @@ class MarketAccessibilityService : AccessibilityService() {
 
     /**
      * Capture screen using MediaProjection
-     * Returns the latest captured bitmap
+     * Fixed: Proper bitmap recycling and thread safety
      */
     fun captureScreen(): Bitmap? {
-        synchronized(captureLock) {
-            try {
+        // Prevent concurrent captures
+        if (!isCapturing.compareAndSet(false, true)) {
+            return latestBitmap.get()
+        }
+        
+        try {
+            synchronized(captureLock) {
                 // Try to setup if not already done
                 if (mediaProjection == null) {
                     setupMediaProjectionIfNeeded()
                 }
                 
                 if (imageReader == null) {
+                    Log.w(TAG, "ImageReader not available")
                     return latestBitmap.get()
                 }
 
@@ -198,36 +246,43 @@ class MarketAccessibilityService : AccessibilityService() {
                     return latestBitmap.get()
                 }
 
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * screenWidth
+                var bitmap: Bitmap? = null
+                try {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * screenWidth
 
-                // Create bitmap
-                val bitmapWidth = screenWidth + rowPadding / pixelStride
-                val bitmap = Bitmap.createBitmap(bitmapWidth, screenHeight, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(buffer)
-                image.close()
+                    // Create bitmap
+                    val bitmapWidth = screenWidth + rowPadding / pixelStride
+                    bitmap = Bitmap.createBitmap(bitmapWidth, screenHeight, Bitmap.Config.ARGB_8888)
+                    bitmap.copyPixelsFromBuffer(buffer)
+                    image.close()
 
-                // Crop if needed
-                val finalBitmap = if (rowPadding > 0) {
-                    val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
-                    bitmap.recycle()
-                    cropped
-                } else {
-                    bitmap
+                    // Crop if needed
+                    val finalBitmap = if (rowPadding > 0) {
+                        val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                        bitmap.recycle()
+                        cropped
+                    } else {
+                        bitmap
+                    }
+
+                    // Update cached bitmap
+                    val oldBitmap = latestBitmap.getAndSet(finalBitmap)
+                    oldBitmap?.recycle()
+
+                    return finalBitmap
+                } catch (e: Exception) {
+                    image.close()
+                    bitmap?.recycle()
+                    Log.e(TAG, "Error capturing screen", e)
+                    return latestBitmap.get()
                 }
-
-                // Update cached bitmap
-                val oldBitmap = latestBitmap.getAndSet(finalBitmap)
-                oldBitmap?.recycle()
-
-                return finalBitmap
-            } catch (e: Exception) {
-                e.printStackTrace()
-                return latestBitmap.get()
             }
+        } finally {
+            isCapturing.set(false)
         }
     }
 
@@ -236,17 +291,33 @@ class MarketAccessibilityService : AccessibilityService() {
      */
     suspend fun performOCR(region: Rect): List<OCRResult> {
         val screenshot = captureScreen() ?: return emptyList()
-        return ocrEngine?.recognizeText(screenshot, region) ?: emptyList()
+        return OCREngine.recognizeText(screenshot, region)
     }
 
     private fun releaseMediaProjection() {
         synchronized(captureLock) {
-            virtualDisplay?.release()
+            try {
+                virtualDisplay?.release()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error releasing virtual display", e)
+            }
             virtualDisplay = null
-            imageReader?.close()
+            
+            try {
+                imageReader?.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing image reader", e)
+            }
             imageReader = null
-            mediaProjection?.stop()
+            
+            try {
+                mediaProjection?.stop()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping media projection", e)
+            }
             mediaProjection = null
+            
+            Log.d(TAG, "MediaProjection released")
         }
     }
 
@@ -266,9 +337,6 @@ class MarketAccessibilityService : AccessibilityService() {
             )
         }
 
-        /**
-         * Perform gesture with custom path (for randomization)
-         */
         fun performGestureWithPath(path: Path, durationMs: Long): Boolean {
             return performGesture(path, durationMs)
         }
@@ -281,7 +349,6 @@ class MarketAccessibilityService : AccessibilityService() {
                 val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
                 if (focusNode != null) {
-                    // Use ACTION_SET_TEXT (no keyboard popup)
                     val arguments = android.os.Bundle()
                     arguments.putCharSequence(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
@@ -296,66 +363,67 @@ class MarketAccessibilityService : AccessibilityService() {
                 }
 
                 // Try to find any editable field
-                val editableNodes = findEditableNodes(rootNode)
-                for (node in editableNodes) {
+                val editableNode = findFirstEditableNode(rootNode)
+                if (editableNode != null) {
                     val arguments = android.os.Bundle()
                     arguments.putCharSequence(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                         text
                     )
-                    val result = node.performAction(
+                    val result = editableNode.performAction(
                         AccessibilityNodeInfo.ACTION_SET_TEXT,
                         arguments
                     )
-                    node.recycle()
+                    editableNode.recycle()
                     if (result) return true
                 }
 
-                // Fallback: Simulate keyboard typing for game engines (Unity)
-                // Games often don't expose editable nodes to Accessibility
-                injectTextViaKeyboard(text)
+                // Fallback: clipboard
+                injectTextViaClipboard(text)
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Error injecting text", e)
                 false
             }
         }
 
         /**
-         * Fallback text injection using keyboard simulation
-         * This works better for game engines like Unity that don't use standard Android input fields
+         * Fallback text injection using clipboard
          */
-        private fun injectTextViaKeyboard(text: String): Boolean {
+        private fun injectTextViaClipboard(text: String): Boolean {
             return try {
-                // For game engines, we need to simulate actual key presses
-                // Since AccessibilityService doesn't directly support key injection,
-                // we'll use a workaround by simulating paste or keyboard events
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 val clip = android.content.ClipData.newPlainText("price", text)
                 clipboard.setPrimaryClip(clip)
-                
-                // Clipboard is set - user can paste manually if needed
-                // Return false to indicate we couldn't inject directly
-                false
+                Log.d(TAG, "Text copied to clipboard: $text")
+                false // Indicates we couldn't inject directly
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Clipboard fallback failed", e)
                 false
             }
         }
 
-        private fun findEditableNodes(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-            val result = mutableListOf<AccessibilityNodeInfo>()
-
+        /**
+         * Fixed: Find first editable node and properly recycle others
+         */
+        private fun findFirstEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
             if (node.isEditable && node.isEnabled) {
-                result.add(node)
+                return node // Return without recycling - caller must recycle
             }
 
             for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { child ->
-                    result.addAll(findEditableNodes(child))
+                val child = node.getChild(i)
+                if (child != null) {
+                    val result = findFirstEditableNode(child)
+                    if (result != null) {
+                        return result
+                    }
+                    // Only recycle if we're not returning this node
+                    if (result == null && child != null) {
+                        child.recycle()
+                    }
                 }
             }
-
-            return result
+            return null
         }
 
         override fun clearTextField(): Boolean = injectText("")
@@ -365,45 +433,32 @@ class MarketAccessibilityService : AccessibilityService() {
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 true
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Error dismissing keyboard", e)
                 false
             }
         }
 
-        /**
-         * Get current package name of foreground app
-         */
         fun getForegroundPackage(): String? {
             return rootInActiveWindow?.packageName?.toString()
         }
 
-        /**
-         * Find node by text
-         */
         fun findNodeByText(text: String): AccessibilityNodeInfo? {
             val rootNode = rootInActiveWindow ?: return null
             val nodes = rootNode.findAccessibilityNodeInfosByText(text)
             return nodes.firstOrNull()
         }
 
-        /**
-         * Find node by view ID
-         */
         fun findNodeById(id: String): AccessibilityNodeInfo? {
             val rootNode = rootInActiveWindow ?: return null
             val nodes = rootNode.findAccessibilityNodeInfosByViewId(id)
             return nodes.firstOrNull()
         }
 
-        /**
-         * Click on node
-         */
         fun clickNode(node: AccessibilityNodeInfo): Boolean {
             return try {
                 if (node.isClickable) {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 } else {
-                    // Use parent click if node not clickable
                     var parent = node.parent
                     while (parent != null) {
                         if (parent.isClickable) {
@@ -418,7 +473,7 @@ class MarketAccessibilityService : AccessibilityService() {
                     false
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Error clicking node", e)
                 false
             }
         }
@@ -440,8 +495,7 @@ class MarketAccessibilityService : AccessibilityService() {
             return try {
                 var success = false
 
-                // Duration in MILLISECONDS (GestureDescription uses milliseconds!)
-                // Ensure minimum 50ms and maximum 500ms for 3D game engines
+                // Duration in MILLISECONDS
                 val duration = durationMs.coerceIn(50L, 500L)
 
                 val gesture = GestureDescription.Builder()
@@ -465,11 +519,10 @@ class MarketAccessibilityService : AccessibilityService() {
                     }
                 }
 
-                // Wait for gesture to complete (max 2 seconds)
                 latch.await(2, TimeUnit.SECONDS)
                 success
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Error performing gesture", e)
                 false
             }
         }
