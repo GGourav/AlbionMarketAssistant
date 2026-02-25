@@ -70,6 +70,7 @@ dependencies {
     implementation("androidx.camera:camera-core:${cameraxVersion}")
     implementation("androidx.camera:camera-camera2:${cameraxVersion}")
     implementation("androidx.camera:camera-lifecycle:${cameraxVersion}")
+    implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     implementation("com.google.android.gms:play-services-vision:20.1.3")
     implementation("com.google.android.gms:play-services-vision-common:19.1.3")
