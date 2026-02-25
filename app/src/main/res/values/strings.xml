@@ -1,5 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Albion Market Assistant</string>
-    <string name="accessibility_service_description">This service is required to automate screen taps and text inputs for the Albion Market Assistant.</string>
+    <string name="accessibility_service_description">This service allows the app to interact with the Albion Online game interface for market automation. It performs gestures to create and edit buy orders automatically.</string>
+    
+    <!-- Buttons -->
+    <string name="btn_create">Create Order</string>
+    <string name="btn_edit">Edit Order</string>
+    <string name="btn_pause">Pause</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_save">Save</string>
+    <string name="btn_reset">Reset</string>
+    <string name="btn_back">Back</string>
+    
+    <!-- Labels -->
+    <string name="label_create_mode">Create Buy Orders</string>
+    <string name="label_edit_mode">Edit Buy Orders</string>
+    <string name="label_global_settings">Global Settings</string>
+    <string name="label_safety_settings">Safety Settings</string>
+    <string name="label_advanced_settings">Advanced Settings</string>
+    
+    <!-- Hints -->
+    <string name="hint_x_coordinate">X coordinate</string>
+    <string name="hint_y_coordinate">Y coordinate</string>
+    <string name="hint_duration_ms">Duration (ms)</string>
+    <string name="hint_price">Price</string>
+    
+    <!-- Messages -->
+    <string name="msg_service_started">Service started</string>
+    <string name="msg_service_stopped">Service stopped</string>
+    <string name="msg_settings_saved">Settings saved successfully</string>
+    <string name="msg_permission_required">Permission required: %s</string>
+    <string name="msg_accessibility_required">Please enable Accessibility Service</string>
+    <string name="msg_overlay_required">Please allow display over other apps</string>
+    
+    <!-- Tabs -->
+    <string name="tab_create">Create</string>
+    <string name="tab_edit">Edit</string>
+    <string name="tab_global">Global</string>
+    <string name="tab_safety">Safety</string>
+    <string name="tab_advanced">Advanced</string>
 </resources>
