@@ -74,6 +74,44 @@ class MarketAccessibilityService : AccessibilityService() {
     
     fun getUIInteractor(): UIInteractor = UIInteractorImpl()
     
+    /**
+     * Get the current foreground app package name
+     * Used for immersive mode protection
+     */
+    fun getCurrentAppPackage(): String? {
+        return try {
+            val rootNode = rootInActiveWindow ?: return null
+            rootNode.packageName?.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    /**
+     * Check if Albion Online is the current foreground app
+     */
+    fun isTargetAppForeground(targetPackage: String): Boolean {
+        val currentPackage = getCurrentAppPackage() ?: return false
+        return currentPackage.equals(targetPackage, ignoreCase = true)
+    }
+    
+    /**
+     * Get OCR text from a screen region
+     * Used for end-of-list detection
+     */
+    fun getFirstRowText(): String? {
+        return try {
+            val rootNode = rootInActiveWindow ?: return null
+            // Find text in the first row region
+            // This is a simplified version - full implementation would use MediaProjection
+            rootNode.findAccessibilityNodeInfosByViewId("text")?.firstOrNull()?.text?.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+    
     inner class UIInteractorImpl : UIInteractor {
         
         override fun performTap(x: Int, y: Int, durationMs: Long): Boolean {
@@ -222,6 +260,14 @@ class MarketAccessibilityService : AccessibilityService() {
                 false
             }
         }
+        
+        override fun getCurrentPackage(): String? {
+            return this@MarketAccessibilityService.getCurrentAppPackage()
+        }
+        
+        override fun isCorrectApp(targetPackage: String): Boolean {
+            return this@MarketAccessibilityService.isTargetAppForeground(targetPackage)
+        }
     }
 }
 
@@ -231,4 +277,6 @@ interface UIInteractor {
     fun injectText(text: String): Boolean
     fun clearTextField(): Boolean
     fun dismissKeyboard(): Boolean
+    fun getCurrentPackage(): String?
+    fun isCorrectApp(targetPackage: String): Boolean
 }
