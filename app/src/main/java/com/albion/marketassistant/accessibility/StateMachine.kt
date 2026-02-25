@@ -15,6 +15,7 @@ class StateMachine(
     val stateFlow: StateFlow<AutomationState> = _stateFlow
     
     private var isRunning = false
+    private var isPaused = false
     private var currentMode = OperationMode.IDLE
     private var currentRowIndex = 0
     private var loopJob: Job? = null
@@ -28,13 +29,27 @@ class StateMachine(
             return
         }
         isRunning = true
+        isPaused = false
         currentMode = mode
         currentRowIndex = 0
         loopJob = scope.launch { mainLoop() }
     }
     
+    fun pause() {
+        isPaused = true
+        updateState(StateType.PAUSED, "Paused")
+    }
+    
+    fun resume() {
+        isPaused = false
+        updateState(StateType.IDLE, "Resumed")
+    }
+    
+    fun isPaused(): Boolean = isPaused
+    
     fun stop() {
         isRunning = false
+        isPaused = false
         loopJob?.cancel()
         currentMode = OperationMode.IDLE
         _stateFlow.value = AutomationState(StateType.IDLE)
@@ -43,84 +58,181 @@ class StateMachine(
     private suspend fun mainLoop() {
         try {
             while (isRunning) {
+                // Check for pause
+                while (isPaused) {
+                    delay(100)
+                }
+                
                 when (currentMode) {
-                    OperationMode.NEW_ORDER_SWEEPER -> executeSweeperLoop()
-                    OperationMode.ORDER_EDITOR -> executeEditorLoop()
+                    OperationMode.NEW_ORDER_SWEEPER -> executeCreateOrderLoop()
+                    OperationMode.ORDER_EDITOR -> executeEditOrderLoop()
                     OperationMode.IDLE -> return
                 }
+                
                 currentRowIndex++
+                
+                // Delay between iterations
+                delay(300)
             }
+        } catch (e: CancellationException) {
+            // Normal cancellation
         } catch (e: Exception) {
             isRunning = false
             onError?.invoke("Error: ${e.message}")
         }
     }
     
-    private suspend fun executeSweeperLoop() {
+    /**
+     * CREATE ORDER WORKFLOW:
+     * 1. Tap Row -> Wait for popup
+     * 2. Tap Price Box -> Clear Text -> Inject Price
+     * 3. Tap Create Button -> Wait
+     * 4. Handle Confirmation Popup (tap Yes if appears)
+     */
+    private suspend fun executeCreateOrderLoop() {
         try {
-            val (rowX, rowY) = calculateRowCoordinates(currentRowIndex)
+            val config = calibration.createMode
+            val timing = calibration.global
+            
+            // Step 1: Calculate row coordinates and tap
+            val rowX = config.firstRowX
+            val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
+            
             updateState(StateType.EXECUTE_TAP, "Tapping row $currentRowIndex")
-            uiInteractor.performTap(rowX, rowY, calibration.tapDurationMs)
-            delay(calibration.popupOpenWaitMs)
+            if (!uiInteractor.performTap(rowX, rowY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap row")
+                return
+            }
             
-            updateState(StateType.SCAN_OCR, "Scanning...")
-            delay(500)
+            delay(timing.popupOpenWaitMs)
             
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting text...")
-            uiInteractor.injectText("1000")
-            delay(calibration.textInputDelayMs)
+            // Step 2: Tap price input box
+            updateState(StateType.EXECUTE_TAP, "Tapping price input")
+            if (!uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
+                return
+            }
             
-            updateState(StateType.EXECUTE_BUTTON, "Creating order...")
-            uiInteractor.performTap(calibration.confirmButtonX, calibration.confirmButtonY, calibration.tapDurationMs)
-            delay(calibration.popupCloseWaitMs)
-            
-            handleRowIteration()
-        } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
-        }
-    }
-    
-    private suspend fun executeEditorLoop() {
-        try {
-            val (editX, editY) = calculateRowCoordinates(currentRowIndex)
-            updateState(StateType.EXECUTE_TAP, "Editing order $currentRowIndex")
-            uiInteractor.performTap(editX, editY, calibration.tapDurationMs)
-            delay(calibration.popupOpenWaitMs)
-            
-            updateState(StateType.SCAN_OCR, "Reading price...")
-            delay(500)
-            
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Updating price...")
-            uiInteractor.clearTextField()
             delay(100)
-            uiInteractor.injectText("1001")
-            delay(calibration.textInputDelayMs)
             
-            updateState(StateType.EXECUTE_BUTTON, "Updating order...")
-            uiInteractor.performTap(calibration.confirmButtonX, calibration.confirmButtonY, calibration.tapDurationMs)
-            delay(calibration.popupCloseWaitMs)
+            // Clear and inject text (without keyboard)
+            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price")
+            uiInteractor.clearTextField()
+            delay(50)
+            if (!uiInteractor.injectText("1000")) {
+                updateState(StateType.ERROR_RETRY, "Failed to inject text")
+                return
+            }
             
-            handleRowIteration()
+            delay(timing.textInputDelayMs)
+            
+            // Dismiss keyboard if it appeared
+            uiInteractor.dismissKeyboard()
+            delay(timing.keyboardDismissDelayMs)
+            
+            // Step 3: Tap Create button
+            updateState(StateType.EXECUTE_BUTTON, "Creating order")
+            if (!uiInteractor.performTap(config.createButtonX, config.createButtonY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap create button")
+                return
+            }
+            
+            delay(timing.confirmationWaitMs)
+            
+            // Step 4: Handle confirmation popup
+            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
+            uiInteractor.performTap(config.confirmYesX, config.confirmYesY, timing.tapDurationMs)
+            
+            delay(timing.popupCloseWaitMs)
+            
+            // Step 5: Handle scrolling if needed
+            handleRowIteration(config.maxRowsPerScreen, timing)
+            
         } catch (e: Exception) {
             updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
         }
     }
     
-    private fun calculateRowCoordinates(rowIndex: Int): Pair<Int, Int> {
-        val x = calibration.firstRowX
-        val y = calibration.firstRowY + (rowIndex * calibration.rowYOffset)
-        return Pair(x, y)
+    /**
+     * EDIT ORDER WORKFLOW:
+     * 1. Tap Edit Button -> Wait for popup
+     * 2. Tap Price Box -> Clear Text -> Inject New Price
+     * 3. Tap Update Button -> Wait
+     * 4. Handle Confirmation Popup (tap Yes if appears)
+     */
+    private suspend fun executeEditOrderLoop() {
+        try {
+            val config = calibration.editMode
+            val timing = calibration.global
+            
+            // Step 1: Calculate edit button coordinates and tap
+            val editX = config.editButtonX
+            val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
+            
+            updateState(StateType.EXECUTE_TAP, "Tapping edit button $currentRowIndex")
+            if (!uiInteractor.performTap(editX, editY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap edit button")
+                return
+            }
+            
+            delay(timing.popupOpenWaitMs)
+            
+            // Step 2: Tap price input box
+            updateState(StateType.EXECUTE_TAP, "Tapping price input")
+            if (!uiInteractor.performTap(config.priceInputX, config.priceInputY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
+                return
+            }
+            
+            delay(100)
+            
+            // Clear and inject text (without keyboard)
+            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price")
+            uiInteractor.clearTextField()
+            delay(50)
+            if (!uiInteractor.injectText("1001")) {
+                updateState(StateType.ERROR_RETRY, "Failed to inject text")
+                return
+            }
+            
+            delay(timing.textInputDelayMs)
+            
+            // Dismiss keyboard if it appeared
+            uiInteractor.dismissKeyboard()
+            delay(timing.keyboardDismissDelayMs)
+            
+            // Step 3: Tap Update button
+            updateState(StateType.EXECUTE_BUTTON, "Updating order")
+            if (!uiInteractor.performTap(config.updateButtonX, config.updateButtonY, timing.tapDurationMs)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap update button")
+                return
+            }
+            
+            delay(timing.confirmationWaitMs)
+            
+            // Step 4: Handle confirmation popup
+            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
+            uiInteractor.performTap(config.confirmYesX, config.confirmYesY, timing.tapDurationMs)
+            
+            delay(timing.popupCloseWaitMs)
+            
+            // Step 5: Handle scrolling if needed
+            handleRowIteration(5, timing) // Default max rows for edit mode
+            
+        } catch (e: Exception) {
+            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+        }
     }
     
-    private suspend fun handleRowIteration() {
-        if (currentRowIndex % calibration.maxRowsPerScreen == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Swiping...")
+    private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
+        if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
+            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
             uiInteractor.performSwipe(
-                calibration.swipeStartX,
-                calibration.swipeStartY,
-                calibration.swipeEndX,
-                calibration.swipeEndY,
-                calibration.swipeDurationMs.toLong()
+                timing.swipeStartX,
+                timing.swipeStartY,
+                timing.swipeEndX,
+                timing.swipeEndY,
+                timing.swipeDurationMs.toLong()
             )
             delay(300)
         }
@@ -131,10 +243,10 @@ class StateMachine(
             stateType = stateType,
             mode = currentMode,
             currentRowIndex = currentRowIndex,
-            errorMessage = if (stateType == StateType.ERROR_RETRY) message else null
+            errorMessage = if (stateType == StateType.ERROR_RETRY) message else null,
+            isPaused = isPaused
         )
         _stateFlow.value = state
         onStateChange?.invoke(state)
     }
 }
-
