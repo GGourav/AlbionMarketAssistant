@@ -28,10 +28,16 @@ data class CreateModeConfig(
     val confirmYesX: Int = 500,
     val confirmYesY: Int = 600,
     val closeButtonX: Int = 1000,
-    val closeButtonY: Int = 200
+    val closeButtonY: Int = 200,
+    // First row OCR region for end-of-list detection
+    val firstRowOcrLeft: Int = 50,
+    val firstRowOcrTop: Int = 280,
+    val firstRowOcrRight: Int = 400,
+    val firstRowOcrBottom: Int = 320
 ) {
     fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
     fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
+    fun getFirstRowOCRRegion(): Rect = Rect(firstRowOcrLeft, firstRowOcrTop, firstRowOcrRight, firstRowOcrBottom)
 }
 
 /**
@@ -56,10 +62,16 @@ data class EditModeConfig(
     val confirmYesX: Int = 500,
     val confirmYesY: Int = 600,
     val closeButtonX: Int = 1000,
-    val closeButtonY: Int = 200
+    val closeButtonY: Int = 200,
+    // First row OCR region for end-of-list detection
+    val firstRowOcrLeft: Int = 50,
+    val firstRowOcrTop: Int = 280,
+    val firstRowOcrRight: Int = 400,
+    val firstRowOcrBottom: Int = 320
 ) {
     fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
     fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
+    fun getFirstRowOCRRegion(): Rect = Rect(firstRowOcrLeft, firstRowOcrTop, firstRowOcrRight, firstRowOcrBottom)
 }
 
 /**
@@ -83,7 +95,11 @@ data class GlobalSettings(
     val highlightedRowColorHex: String = "#E8E8E8",
     val colorToleranceRGB: Int = 30,
     val ocrConfidenceThreshold: Float = 0.7f,
-    val ocrLanguage: String = "en"
+    val ocrLanguage: String = "en",
+    // Albion Online package name for app verification
+    val targetAppPackage: String = "com.albiononline",
+    // Max consecutive same-page detections before stopping
+    val maxSamePageCount: Int = 2
 )
 
 /**
@@ -96,7 +112,13 @@ data class SafetySettings(
     val enableOcrSanityCheck: Boolean = true,
     val maxRetries: Int = 3,
     val uiTimeoutMs: Long = 3000,
-    val autoDismissErrors: Boolean = true
+    val autoDismissErrors: Boolean = true,
+    // Enable end-of-list detection
+    val enableEndOfListDetection: Boolean = true,
+    // Enable app package verification (immersive mode protection)
+    val enableAppVerification: Boolean = true,
+    // Pause on interruption (calls, notifications)
+    val pauseOnInterruption: Boolean = true
 )
 
 @Entity(tableName = "calibration_data")
@@ -120,7 +142,8 @@ enum class StateType {
     IDLE, PAUSED, WAIT_POPUP_OPEN, SCAN_HIGHLIGHTS, SCAN_OCR, VERIFY_UI_ELEMENT,
     EXECUTE_TAP, EXECUTE_TEXT_INPUT, EXECUTE_BUTTON, HANDLE_CONFIRMATION,
     HANDLE_ERROR_POPUP, DISMISS_KEYBOARD, WAIT_POPUP_CLOSE, SCROLL_NEXT_ROW,
-    COMPLETE_ITERATION, ERROR_RETRY, ERROR_PRICE_SANITY, ERROR_TIMEOUT, COOLDOWN
+    COMPLETE_ITERATION, ERROR_RETRY, ERROR_PRICE_SANITY, ERROR_TIMEOUT, 
+    ERROR_END_OF_LIST, ERROR_WRONG_APP, COOLDOWN
 }
 
 data class AutomationState(
@@ -135,6 +158,8 @@ data class AutomationState(
     val isPaused: Boolean = false,
     val retryCount: Int = 0,
     val lastPrice: Int? = null,
+    val currentAppName: String? = null,
+    val isCorrectApp: Boolean = true,
     val timestamp: Long = System.currentTimeMillis()
 )
 
