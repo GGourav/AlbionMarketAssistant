@@ -27,7 +27,6 @@ class ColorDetector {
             val safeRight = Math.min(bitmap.width, region.right)
             val safeBottom = Math.min(bitmap.height, region.bottom)
 
-            // Sample every 5th pixel to keep it blazing fast
             for (y in safeTop until safeBottom step 5) {
                 for (x in safeLeft until safeRight step 5) {
                     val pixel = bitmap.getPixel(x, y)
@@ -51,7 +50,6 @@ class ColorDetector {
             )
 
             val confidence = matchCount.toFloat() / totalPixels.toFloat()
-            // If more than 15% of the sampled background is the target color, it's a match
             val isMatch = confidence > 0.15f
 
             return ColorDetectionResult(
