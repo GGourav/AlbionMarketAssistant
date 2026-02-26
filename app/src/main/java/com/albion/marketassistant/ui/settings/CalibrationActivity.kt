@@ -9,7 +9,9 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.albion.marketassistant.R
 import com.albion.marketassistant.data.AutomationConfig
-import com.google.gson.Gson
+import com.albion.marketassistant.data.SimpleCreateModeConfig
+import com.albion.marketassistant.data.SimpleEditModeConfig
+import org.json.JSONObject
 
 class CalibrationActivity : AppCompatActivity() {
 
@@ -100,7 +102,7 @@ class CalibrationActivity : AppCompatActivity() {
         val configJson = sharedPrefs.getString("automation_config", null)
         if (configJson != null) {
             try {
-                val config = Gson().fromJson(configJson, AutomationConfig::class.java)
+                val config = parseConfigFromJson(configJson)
                 
                 // CREATE Mode
                 etCreateRowStartX.setText(config.createMode.rowStartX.toString())
@@ -155,7 +157,7 @@ class CalibrationActivity : AppCompatActivity() {
     private fun saveConfig() {
         try {
             val config = AutomationConfig(
-                createMode = com.albion.marketassistant.data.CreateModeConfig(
+                createMode = SimpleCreateModeConfig(
                     rowStartX = etCreateRowStartX.text.toString().toIntOrNull() ?: 540,
                     rowStartY = etCreateRowStartY.text.toString().toIntOrNull() ?: 400,
                     rowEndX = etCreateRowEndX.text.toString().toIntOrNull() ?: 540,
@@ -169,7 +171,7 @@ class CalibrationActivity : AppCompatActivity() {
                     swipeY = etCreateSwipeY.text.toString().toIntOrNull() ?: 1500,
                     swipeDistance = etCreateSwipeDistance.text.toString().toIntOrNull() ?: 300
                 ),
-                editMode = com.albion.marketassistant.data.EditModeConfig(
+                editMode = SimpleEditModeConfig(
                     row1X = etEditRow1X.text.toString().toIntOrNull() ?: 540,
                     row1Y = etEditRow1Y.text.toString().toIntOrNull() ?: 400,
                     priceInputX = etEditPriceInputX.text.toString().toIntOrNull() ?: 650,
@@ -189,7 +191,7 @@ class CalibrationActivity : AppCompatActivity() {
                 gestureDurationMs = etGestureDuration.text.toString().toLongOrNull() ?: 200L
             )
             
-            val configJson = Gson().toJson(config)
+            val configJson = configToJson(config)
             sharedPrefs.edit().putString("automation_config", configJson).apply()
             
             Toast.makeText(this, "Configuration saved!", Toast.LENGTH_SHORT).show()
@@ -236,5 +238,92 @@ class CalibrationActivity : AppCompatActivity() {
         etGestureDuration.setText("200")
         
         Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
+    }
+
+    // Manual JSON parsing to avoid Gson dependency
+    private fun parseConfigFromJson(json: String): AutomationConfig {
+        val obj = JSONObject(json)
+        
+        val createObj = obj.optJSONObject("createMode") ?: JSONObject()
+        val createMode = SimpleCreateModeConfig(
+            rowStartX = createObj.optInt("rowStartX", 540),
+            rowStartY = createObj.optInt("rowStartY", 400),
+            rowEndX = createObj.optInt("rowEndX", 540),
+            rowEndY = createObj.optInt("rowEndY", 1800),
+            rowHeight = createObj.optInt("rowHeight", 120),
+            plusButtonX = createObj.optInt("plusButtonX", 800),
+            plusButtonY = createObj.optInt("plusButtonY", 600),
+            hardPriceCap = createObj.optLong("hardPriceCap", 100000000L),
+            maxRows = createObj.optInt("maxRows", 8),
+            swipeX = createObj.optInt("swipeX", 540),
+            swipeY = createObj.optInt("swipeY", 1500),
+            swipeDistance = createObj.optInt("swipeDistance", 300)
+        )
+        
+        val editObj = obj.optJSONObject("editMode") ?: JSONObject()
+        val editMode = SimpleEditModeConfig(
+            row1X = editObj.optInt("row1X", 540),
+            row1Y = editObj.optInt("row1Y", 400),
+            priceInputX = editObj.optInt("priceInputX", 650),
+            priceInputY = editObj.optInt("priceInputY", 600),
+            hardPriceCap = editObj.optLong("hardPriceCap", 100000000L),
+            priceIncrement = editObj.optLong("priceIncrement", 1L),
+            createButtonX = editObj.optInt("createButtonX", 900),
+            createButtonY = editObj.optInt("createButtonY", 600),
+            confirmButtonX = editObj.optInt("confirmButtonX", 540),
+            confirmButtonY = editObj.optInt("confirmButtonY", 1200)
+        )
+        
+        return AutomationConfig(
+            createMode = createMode,
+            editMode = editMode,
+            ocrRegionLeft = obj.optInt("ocrRegionLeft", 400),
+            ocrRegionTop = obj.optInt("ocrRegionTop", 500),
+            ocrRegionRight = obj.optInt("ocrRegionRight", 700),
+            ocrRegionBottom = obj.optInt("ocrRegionBottom", 700),
+            loopDelayMs = obj.optLong("loopDelayMs", 500L),
+            gestureDurationMs = obj.optLong("gestureDurationMs", 200L)
+        )
+    }
+
+    private fun configToJson(config: AutomationConfig): String {
+        val createObj = JSONObject().apply {
+            put("rowStartX", config.createMode.rowStartX)
+            put("rowStartY", config.createMode.rowStartY)
+            put("rowEndX", config.createMode.rowEndX)
+            put("rowEndY", config.createMode.rowEndY)
+            put("rowHeight", config.createMode.rowHeight)
+            put("plusButtonX", config.createMode.plusButtonX)
+            put("plusButtonY", config.createMode.plusButtonY)
+            put("hardPriceCap", config.createMode.hardPriceCap)
+            put("maxRows", config.createMode.maxRows)
+            put("swipeX", config.createMode.swipeX)
+            put("swipeY", config.createMode.swipeY)
+            put("swipeDistance", config.createMode.swipeDistance)
+        }
+        
+        val editObj = JSONObject().apply {
+            put("row1X", config.editMode.row1X)
+            put("row1Y", config.editMode.row1Y)
+            put("priceInputX", config.editMode.priceInputX)
+            put("priceInputY", config.editMode.priceInputY)
+            put("hardPriceCap", config.editMode.hardPriceCap)
+            put("priceIncrement", config.editMode.priceIncrement)
+            put("createButtonX", config.editMode.createButtonX)
+            put("createButtonY", config.editMode.createButtonY)
+            put("confirmButtonX", config.editMode.confirmButtonX)
+            put("confirmButtonY", config.editMode.confirmButtonY)
+        }
+        
+        return JSONObject().apply {
+            put("createMode", createObj)
+            put("editMode", editObj)
+            put("ocrRegionLeft", config.ocrRegionLeft)
+            put("ocrRegionTop", config.ocrRegionTop)
+            put("ocrRegionRight", config.ocrRegionRight)
+            put("ocrRegionBottom", config.ocrRegionBottom)
+            put("loopDelayMs", config.loopDelayMs)
+            put("gestureDurationMs", config.gestureDurationMs)
+        }.toString()
     }
 }
