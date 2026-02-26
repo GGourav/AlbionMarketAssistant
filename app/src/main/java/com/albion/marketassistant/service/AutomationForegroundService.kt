@@ -241,7 +241,7 @@ class AutomationForegroundService : Service() {
                     return@launch
                 }
 
-                // Fixed: Pass calibration to the accessibility service
+                // Pass calibration to the accessibility service
                 accessibilityService.setCalibration(calibration)
 
                 val uiInteractor: UIInteractor = accessibilityService.getUIInteractor()
@@ -256,8 +256,6 @@ class AutomationForegroundService : Service() {
                         when (state.stateType) {
                             StateType.PAUSED -> "PAUSED"
                             StateType.ERROR_PRICE_SANITY -> "PRICE ERROR!"
-                            StateType.ERROR_WINDOW_LOST -> "WINDOW LOST"
-                            StateType.ERROR_STUCK_DETECTED -> "STUCK!"
                             StateType.ERROR_END_OF_LIST -> "END OF LIST"
                             StateType.ERROR_BATTERY_LOW -> "LOW BATTERY"
                             StateType.RECOVERING -> "RECOVERING..."
@@ -272,8 +270,6 @@ class AutomationForegroundService : Service() {
                             showToast("PRICE SANITY ERROR: ${state.errorMessage}")
                             floatingOverlayManager?.updateStatus("PRICE ERROR!")
                         }
-                        StateType.ERROR_WINDOW_LOST -> showToast("Game window lost!")
-                        StateType.ERROR_STUCK_DETECTED -> showToast("Stuck detected - recovering...")
                         StateType.ERROR_END_OF_LIST -> showToast("End of list reached!")
                         StateType.ERROR_BATTERY_LOW -> showToast("Battery too low - paused")
                         else -> {}
@@ -294,10 +290,6 @@ class AutomationForegroundService : Service() {
                 stateMachine?.onEndOfList = {
                     showToast("Completed all items!")
                     floatingOverlayManager?.updateStatus("COMPLETE")
-                }
-
-                stateMachine?.onWindowLost = {
-                    showToast("Albion window lost - please return to game")
                 }
 
                 stateMachine?.onStatisticsUpdate = { stats ->
