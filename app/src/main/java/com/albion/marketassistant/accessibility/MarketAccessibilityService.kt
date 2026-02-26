@@ -41,7 +41,6 @@ class MarketAccessibilityService : AccessibilityService() {
         @Volatile
         private var instance: MarketAccessibilityService? = null
         
-        // Fixed: Clear these on service destroy to prevent memory leaks
         private var mediaProjectionResultCode: Int = 0
         private var mediaProjectionResultData: Intent? = null
         private val projectionLock = Any()
@@ -73,7 +72,7 @@ class MarketAccessibilityService : AccessibilityService() {
     private var stateMachine: StateMachine? = null
     private var calibration: CalibrationData? = null
 
-    // Screen capture - MediaProjection based
+    // Screen capture
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -88,7 +87,6 @@ class MarketAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
 
-        // Initialize screen capture if we have MediaProjection data
         mainHandler.post {
             setupMediaProjectionIfNeeded()
         }
@@ -109,19 +107,11 @@ class MarketAccessibilityService : AccessibilityService() {
         instance = null
         serviceScope.cancel()
         releaseMediaProjection()
-        
-        // Fixed: Clear cached bitmap
         latestBitmap.getAndSet(null)?.recycle()
-        
-        // Fixed: Close OCR engine
         OCREngine.close()
-        
         super.onDestroy()
     }
 
-    /**
-     * Setup MediaProjection for screen capture
-     */
     fun setupMediaProjectionIfNeeded() {
         synchronized(captureLock) {
             if (mediaProjection != null) return
@@ -219,19 +209,13 @@ class MarketAccessibilityService : AccessibilityService() {
 
     fun getStateMachine(): StateMachine? = stateMachine
 
-    /**
-     * Capture screen using MediaProjection
-     * Fixed: Proper bitmap recycling and thread safety
-     */
     fun captureScreen(): Bitmap? {
-        // Prevent concurrent captures
         if (!isCapturing.compareAndSet(false, true)) {
             return latestBitmap.get()
         }
         
         try {
             synchronized(captureLock) {
-                // Try to setup if not already done
                 if (mediaProjection == null) {
                     setupMediaProjectionIfNeeded()
                 }
@@ -254,13 +238,11 @@ class MarketAccessibilityService : AccessibilityService() {
                     val rowStride = planes[0].rowStride
                     val rowPadding = rowStride - pixelStride * screenWidth
 
-                    // Create bitmap
                     val bitmapWidth = screenWidth + rowPadding / pixelStride
                     bitmap = Bitmap.createBitmap(bitmapWidth, screenHeight, Bitmap.Config.ARGB_8888)
                     bitmap.copyPixelsFromBuffer(buffer)
                     image.close()
 
-                    // Crop if needed
                     val finalBitmap = if (rowPadding > 0) {
                         val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
                         bitmap.recycle()
@@ -269,7 +251,6 @@ class MarketAccessibilityService : AccessibilityService() {
                         bitmap
                     }
 
-                    // Update cached bitmap
                     val oldBitmap = latestBitmap.getAndSet(finalBitmap)
                     oldBitmap?.recycle()
 
@@ -286,9 +267,6 @@ class MarketAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Perform OCR on screen region
-     */
     suspend fun performOCR(region: Rect): List<OCRResult> {
         val screenshot = captureScreen() ?: return emptyList()
         return OCREngine.recognizeText(screenshot, region)
@@ -321,6 +299,10 @@ class MarketAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * UIInteractor Implementation
+     * CRITICAL: All taps use 150-300ms duration to prevent ghost taps
+     */
     inner class UIInteractorImpl : UIInteractor {
 
         override fun performTap(x: Int, y: Int, durationMs: Long): Boolean {
@@ -337,49 +319,38 @@ class MarketAccessibilityService : AccessibilityService() {
             )
         }
 
-        fun performGestureWithPath(path: Path, durationMs: Long): Boolean {
-            return performGesture(path, durationMs)
-        }
-
+        /**
+         * CRITICAL for EDIT MODE:
+         * Inject text using ACTION_SET_TEXT
+         * This does NOT trigger the soft keyboard
+         * 
+         * DO NOT use dispatchGesture to tap the text box first!
+         */
         override fun injectText(text: String): Boolean {
             return try {
                 val rootNode = rootInActiveWindow ?: return false
 
-                // Find the focused input field
-                val focusNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-
-                if (focusNode != null) {
+                // Find the focused input field or any editable field
+                val targetNode = findEditableNode(rootNode)
+                
+                if (targetNode != null) {
                     val arguments = android.os.Bundle()
                     arguments.putCharSequence(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                         text
                     )
-                    val result = focusNode.performAction(
+                    val result = targetNode.performAction(
                         AccessibilityNodeInfo.ACTION_SET_TEXT,
                         arguments
                     )
-                    focusNode.recycle()
-                    if (result) return true
+                    targetNode.recycle()
+                    
+                    Log.d(TAG, "Text injection via ACTION_SET_TEXT: '$text' -> $result")
+                    return result
                 }
 
-                // Try to find any editable field
-                val editableNode = findFirstEditableNode(rootNode)
-                if (editableNode != null) {
-                    val arguments = android.os.Bundle()
-                    arguments.putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        text
-                    )
-                    val result = editableNode.performAction(
-                        AccessibilityNodeInfo.ACTION_SET_TEXT,
-                        arguments
-                    )
-                    editableNode.recycle()
-                    if (result) return true
-                }
-
-                // Fallback: clipboard
-                injectTextViaClipboard(text)
+                Log.w(TAG, "No editable node found for text injection")
+                false
             } catch (e: Exception) {
                 Log.e(TAG, "Error injecting text", e)
                 false
@@ -387,46 +358,52 @@ class MarketAccessibilityService : AccessibilityService() {
         }
 
         /**
-         * Fallback text injection using clipboard
+         * Find editable node for text injection
+         * Properly recycles non-target nodes
          */
-        private fun injectTextViaClipboard(text: String): Boolean {
-            return try {
-                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                val clip = android.content.ClipData.newPlainText("price", text)
-                clipboard.setPrimaryClip(clip)
-                Log.d(TAG, "Text copied to clipboard: $text")
-                false // Indicates we couldn't inject directly
-            } catch (e: Exception) {
-                Log.e(TAG, "Clipboard fallback failed", e)
-                false
-            }
-        }
-
-        /**
-         * Fixed: Find first editable node and properly recycle others
-         */
-        private fun findFirstEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            // Check if this node is editable
             if (node.isEditable && node.isEnabled) {
-                return node // Return without recycling - caller must recycle
+                return node  // Return without recycling - caller must recycle
             }
 
+            // Check children
             for (i in 0 until node.childCount) {
-                val child = node.getChild(i)
-                if (child != null) {
-                    val result = findFirstEditableNode(child)
-                    if (result != null) {
-                        return result
-                    }
-                    // Only recycle if we're not returning this node
-                    if (result == null && child != null) {
-                        child.recycle()
-                    }
+                val child = node.getChild(i) ?: continue
+                val result = findEditableNode(child)
+                if (result != null) {
+                    return result
                 }
+                child.recycle()
             }
             return null
         }
 
-        override fun clearTextField(): Boolean = injectText("")
+        override fun clearTextField(): Boolean {
+            return try {
+                val rootNode = rootInActiveWindow ?: return false
+                val targetNode = findEditableNode(rootNode)
+                
+                if (targetNode != null) {
+                    val arguments = android.os.Bundle()
+                    arguments.putCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        ""
+                    )
+                    val result = targetNode.performAction(
+                        AccessibilityNodeInfo.ACTION_SET_TEXT,
+                        arguments
+                    )
+                    targetNode.recycle()
+                    result
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing text field", e)
+                false
+            }
+        }
 
         override fun dismissKeyboard(): Boolean {
             return try {
@@ -434,46 +411,6 @@ class MarketAccessibilityService : AccessibilityService() {
                 true
             } catch (e: Exception) {
                 Log.e(TAG, "Error dismissing keyboard", e)
-                false
-            }
-        }
-
-        fun getForegroundPackage(): String? {
-            return rootInActiveWindow?.packageName?.toString()
-        }
-
-        fun findNodeByText(text: String): AccessibilityNodeInfo? {
-            val rootNode = rootInActiveWindow ?: return null
-            val nodes = rootNode.findAccessibilityNodeInfosByText(text)
-            return nodes.firstOrNull()
-        }
-
-        fun findNodeById(id: String): AccessibilityNodeInfo? {
-            val rootNode = rootInActiveWindow ?: return null
-            val nodes = rootNode.findAccessibilityNodeInfosByViewId(id)
-            return nodes.firstOrNull()
-        }
-
-        fun clickNode(node: AccessibilityNodeInfo): Boolean {
-            return try {
-                if (node.isClickable) {
-                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                } else {
-                    var parent = node.parent
-                    while (parent != null) {
-                        if (parent.isClickable) {
-                            val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                            parent.recycle()
-                            return result
-                        }
-                        val nextParent = parent.parent
-                        parent.recycle()
-                        parent = nextParent
-                    }
-                    false
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error clicking node", e)
                 false
             }
         }
@@ -495,8 +432,8 @@ class MarketAccessibilityService : AccessibilityService() {
             return try {
                 var success = false
 
-                // Duration in MILLISECONDS
-                val duration = durationMs.coerceIn(50L, 500L)
+                // CRITICAL: Ensure duration is at least 150ms to prevent ghost taps
+                val duration = durationMs.coerceIn(150L, 500L)
 
                 val gesture = GestureDescription.Builder()
                     .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
