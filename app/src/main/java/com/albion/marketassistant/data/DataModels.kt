@@ -4,10 +4,10 @@ import android.graphics.Rect
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Embedded
-import androidx.room.TypeConverters
 
 /**
  * Configuration for Create Buy Order mode
+ * MODE 1: FAST LOOP - Tap + button to outbid
  */
 data class CreateModeConfig(
     // Row coordinates for tapping market rows
@@ -16,19 +16,16 @@ data class CreateModeConfig(
     val rowYOffset: Int = 80,
     val maxRowsPerScreen: Int = 5,
 
-    // Price input box coordinates
-    val priceInputX: Int = 300,
-    val priceInputY: Int = 400,
-    val priceInputRegionLeft: Int = 200,
-    val priceInputRegionTop: Int = 380,
-    val priceInputRegionRight: Int = 450,
-    val priceInputRegionBottom: Int = 420,
+    // PLUS BUTTON coordinates (increment button next to price)
+    // This is tapped to increase the auto-filled price by 1
+    val plusButtonX: Int = 350,
+    val plusButtonY: Int = 450,
 
     // Create Order button coordinates
     val createButtonX: Int = 500,
     val createButtonY: Int = 550,
 
-    // OCR scan region for price reading
+    // OCR scan region for price reading (safety check only)
     val ocrRegionLeft: Int = 600,
     val ocrRegionTop: Int = 200,
     val ocrRegionRight: Int = 1050,
@@ -42,32 +39,29 @@ data class CreateModeConfig(
     val closeButtonX: Int = 1000,
     val closeButtonY: Int = 200,
     
-    // Default buy price (in silver) - configurable per item type
-    val defaultBuyPrice: Int = 10000,
+    // Hard Price Cap - SAFETY KILL-SWITCH
+    // If OCR detects price exceeds this, bot HALTS
+    val hardPriceCap: Int = 100000,
     
-    // Price increment per row (to undercut competitors)
+    // Price increment (usually 1)
     val priceIncrement: Int = 1
 ) {
     fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
-    fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
 }
 
 /**
  * Configuration for Edit Buy Order mode
+ * MODE 2: READ & TYPE LOOP - OCR price, inject new price
  */
 data class EditModeConfig(
-    // Edit button coordinates (per row)
+    // Edit button coordinates (ONLY ROW 1 - no iteration)
     val editButtonX: Int = 950,
     val editButtonY: Int = 300,
-    val editButtonYOffset: Int = 80,
 
-    // Price input box coordinates
+    // Price Input Box coordinates (for reference only)
+    // CRITICAL: Do NOT tap this! Use ACTION_SET_TEXT instead
     val priceInputX: Int = 300,
     val priceInputY: Int = 400,
-    val priceInputRegionLeft: Int = 200,
-    val priceInputRegionTop: Int = 380,
-    val priceInputRegionRight: Int = 450,
-    val priceInputRegionBottom: Int = 420,
 
     // Update Order button coordinates
     val updateButtonX: Int = 500,
@@ -85,17 +79,22 @@ data class EditModeConfig(
 
     // Close button coordinates
     val closeButtonX: Int = 1000,
-    val closeButtonY: Int = 200
+    val closeButtonY: Int = 200,
+    
+    // Hard Price Cap - SAFETY KILL-SWITCH
+    val hardPriceCap: Int = 100000,
+    
+    // Price increment (usually 1)
+    val priceIncrement: Int = 1
 ) {
     fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
-    fun getPriceInputRegion(): Rect = Rect(priceInputRegionLeft, priceInputRegionTop, priceInputRegionRight, priceInputRegionBottom)
 }
 
 /**
  * Global settings shared between modes
  */
 data class GlobalSettings(
-    // Swipe settings for scrolling
+    // Swipe settings for scrolling (CREATE MODE only)
     val swipeStartX: Int = 500,
     val swipeStartY: Int = 600,
     val swipeEndX: Int = 500,
@@ -103,18 +102,18 @@ data class GlobalSettings(
     val swipeDurationMs: Int = 300,
 
     // Timing settings (milliseconds)
-    val tapDurationMs: Long = 150,
+    val tapDurationMs: Long = 200,  // CRITICAL: 150-300ms to prevent ghost taps
     val textInputDelayMs: Long = 200,
-    val popupOpenWaitMs: Long = 800,
-    val popupCloseWaitMs: Long = 600,
-    val confirmationWaitMs: Long = 500,
+    val popupOpenWaitMs: Long = 300,  // Reduced from 800ms - faster loop
+    val popupCloseWaitMs: Long = 400,
+    val confirmationWaitMs: Long = 400,
     val ocrScanDelayMs: Long = 300,
     val keyboardDismissDelayMs: Long = 300,
     
-    // Network lag multiplier (1.0 = normal, 2.0 = double delays)
+    // Network lag multiplier
     val networkLagMultiplier: Float = 1.0f,
     
-    // Cooldown between cycles to prevent memory issues
+    // Cooldown between cycles
     val cycleCooldownMs: Long = 200,
 
     // Color detection
@@ -127,20 +126,20 @@ data class GlobalSettings(
 )
 
 /**
- * Safety settings to prevent financial loss
+ * Safety settings
  */
 data class SafetySettings(
-    val maxPriceChangePercent: Float = 0.2f,
+    val maxPriceChangePercent: Float = 0.5f,  // Increased for price volatility
     val maxPriceCap: Int = 100000,
     val minPriceCap: Int = 1,
-    val enableOcrSanityCheck: Boolean = true,
+    val enableOcrSanityCheck: Boolean = true,  // Safety kill-switch
     val maxRetries: Int = 3,
-    val uiTimeoutMs: Long = 3000,
+    val uiTimeoutMs: Long = 5000,
     val autoDismissErrors: Boolean = true
 )
 
 /**
- * Anti-Detection settings to avoid pattern detection
+ * Anti-Detection settings
  */
 data class AntiDetectionSettings(
     val enableRandomization: Boolean = true,
@@ -169,16 +168,17 @@ data class EndOfListSettings(
 }
 
 /**
- * Immersive Mode / Interruption Trap settings
+ * Immersive Mode settings
+ * CRITICAL OVERHAUL 3: DISABLED by default
+ * The strict package verification causes false positives
  */
 data class ImmersiveModeSettings(
-    val enableWindowVerification: Boolean = true,
-    // FIXED: Changed from "com.albiononline.albiononline" to "com.albiononline"
+    val enableWindowVerification: Boolean = false,  // DISABLED - causes false positives
     val gamePackageName: String = "com.albiononline",
-    val actionOnWindowLost: String = "pause",
-    val windowCheckIntervalMs: Long = 2000,
-    val windowLostThreshold: Int = 2,
-    val autoResumeOnReturn: Boolean = true
+    val actionOnWindowLost: String = "ignore",  // Changed from "pause"
+    val windowCheckIntervalMs: Long = 999999999,  // Effectively disabled
+    val windowLostThreshold: Int = 999,  // Effectively disabled
+    val autoResumeOnReturn: Boolean = false
 )
 
 /**
@@ -200,7 +200,7 @@ data class BatterySettings(
     val pauseOnBatteryBelow: Int = 15,
     val reduceOcrBelowPercent: Int = 30,
     val lowBatteryOcrMultiplier: Float = 1.5f,
-    val dimScreenDuringAutomation: Boolean = true,
+    val dimScreenDuringAutomation: Boolean = false,
     val dimBrightnessLevel: Int = 30
 )
 
@@ -210,7 +210,7 @@ data class BatterySettings(
 data class ErrorRecoverySettings(
     val enableSmartRecovery: Boolean = true,
     val maxConsecutiveErrors: Int = 5,
-    val maxStateStuckTimeMs: Long = 30000,
+    val maxStateStuckTimeMs: Long = 60000,  // Increased for slower game
     val actionOnStuck: String = "restart",
     val screenshotOnError: Boolean = true,
     val autoRestartAfterErrors: Int = 10,
@@ -248,7 +248,8 @@ data class SessionStatistics(
     val lastCycleTime: Long = 0,
     val consecutiveErrors: Int = 0,
     val lastState: String = "",
-    val stateEnterTime: Long = 0
+    val stateEnterTime: Long = 0,
+    val lastDetectedPrice: Int? = null
 ) {
     fun getSuccessRate(): Float {
         val total = successfulOperations + failedOperations
@@ -338,8 +339,8 @@ enum class OperationMode { IDLE, NEW_ORDER_SWEEPER, ORDER_EDITOR }
 
 enum class StateType {
     IDLE, PAUSED, WAIT_POPUP_OPEN, SCAN_HIGHLIGHTS, SCAN_OCR,
-    VERIFY_UI_ELEMENT, VERIFY_GAME_WINDOW, EXECUTE_TAP, EXECUTE_TEXT_INPUT,
-    EXECUTE_BUTTON, HANDLE_CONFIRMATION, HANDLE_ERROR_POPUP, DISMISS_KEYBOARD,
+    VERIFY_UI_ELEMENT, VERIFY_GAME_WINDOW, EXECUTE_TAP, TAP_PLUS_BUTTON,
+    EXECUTE_TEXT_INPUT, EXECUTE_BUTTON, HANDLE_CONFIRMATION, HANDLE_ERROR_POPUP,
     WAIT_POPUP_CLOSE, SCROLL_NEXT_ROW, COMPLETE_ITERATION, ERROR_RETRY,
     ERROR_PRICE_SANITY, ERROR_TIMEOUT, ERROR_WINDOW_LOST, ERROR_STUCK_DETECTED,
     ERROR_END_OF_LIST, ERROR_BATTERY_LOW, COOLDOWN, RECOVERING
