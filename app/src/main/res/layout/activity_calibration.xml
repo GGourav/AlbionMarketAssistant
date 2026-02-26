@@ -53,7 +53,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Tap Row → Tap + Button → Create → Swipe after Max Rows"
+                    android:text="Tap Row - Tap + Button - Create - Swipe after Max Rows"
                     android:textSize="12sp"
                     android:textColor="#888888"
                     android:layout_marginBottom="12dp"/>
@@ -304,7 +304,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🔵 EDIT ORDERS (Read & Type Loop)"
+                    android:text="🔵 EDIT ORDERS (Read and Type Loop)"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:layout_marginBottom="4dp"/>
@@ -312,7 +312,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Always tap Row 1 → OCR price → Inject new price → Update"
+                    android:text="Always tap Row 1 - OCR price - Inject new price - Update"
                     android:textSize="12sp"
                     android:textColor="#888888"
                     android:layout_marginBottom="12dp"/>
