@@ -1,394 +1,283 @@
+// FILE: app/src/main/java/com/albion/marketassistant/ui/settings/CalibrationActivity.kt
+// ============================================
+// CalibrationActivity.kt - Fixed (Removed enableWindowVerification)
+// ============================================
+
 package com.albion.marketassistant.ui.settings
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
-import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.albion.marketassistant.R
-import com.albion.marketassistant.data.*
-import com.albion.marketassistant.db.CalibrationDatabase
-import com.google.android.material.tabs.TabLayout
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.albion.marketassistant.data.AutomationConfig
+import com.google.gson.Gson
 
 class CalibrationActivity : AppCompatActivity() {
 
-    companion object {
-        private const val TAG = "CalibrationActivity"
-    }
-
-    private val db by lazy { CalibrationDatabase.getInstance(this) }
-    private var currentCalibration: CalibrationData? = null
-    private var currentTab = 0
+    private lateinit var sharedPrefs: SharedPreferences
+    
+    // CREATE Mode inputs
+    private lateinit var etCreateRowStartX: EditText
+    private lateinit var etCreateRowStartY: EditText
+    private lateinit var etCreateRowEndX: EditText
+    private lateinit var etCreateRowEndY: EditText
+    private lateinit var etCreateRowHeight: EditText
+    private lateinit var etCreatePlusButtonX: EditText
+    private lateinit var etCreatePlusButtonY: EditText
+    private lateinit var etCreateHardPriceCap: EditText
+    private lateinit var etCreateMaxRows: EditText
+    private lateinit var etCreateSwipeX: EditText
+    private lateinit var etCreateSwipeY: EditText
+    private lateinit var etCreateSwipeDistance: EditText
+    
+    // EDIT Mode inputs
+    private lateinit var etEditRow1X: EditText
+    private lateinit var etEditRow1Y: EditText
+    private lateinit var etEditPriceInputX: EditText
+    private lateinit var etEditPriceInputY: EditText
+    private lateinit var etEditHardPriceCap: EditText
+    private lateinit var etEditPriceIncrement: EditText
+    private lateinit var etEditCreateButtonX: EditText
+    private lateinit var etEditCreateButtonY: EditText
+    private lateinit var etEditConfirmButtonX: EditText
+    private lateinit var etEditConfirmButtonY: EditText
+    
+    // Common inputs
+    private lateinit var etOcrRegionLeft: EditText
+    private lateinit var etOcrRegionTop: EditText
+    private lateinit var etOcrRegionRight: EditText
+    private lateinit var etOcrRegionBottom: EditText
+    private lateinit var etLoopDelay: EditText
+    private lateinit var etGestureDuration: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
+        
+        sharedPrefs = getSharedPreferences("AlbionMarketAssistant", Context.MODE_PRIVATE)
+        
+        initViews()
+        loadConfig()
+        setupButtons()
+    }
 
-        setupTabs()
-        loadCurrentCalibration()
+    private fun initViews() {
+        // CREATE Mode
+        etCreateRowStartX = findViewById(R.id.et_create_row_start_x)
+        etCreateRowStartY = findViewById(R.id.et_create_row_start_y)
+        etCreateRowEndX = findViewById(R.id.et_create_row_end_x)
+        etCreateRowEndY = findViewById(R.id.et_create_row_end_y)
+        etCreateRowHeight = findViewById(R.id.et_create_row_height)
+        etCreatePlusButtonX = findViewById(R.id.et_create_plus_button_x)
+        etCreatePlusButtonY = findViewById(R.id.et_create_plus_button_y)
+        etCreateHardPriceCap = findViewById(R.id.et_create_hard_price_cap)
+        etCreateMaxRows = findViewById(R.id.et_create_max_rows)
+        etCreateSwipeX = findViewById(R.id.et_create_swipe_x)
+        etCreateSwipeY = findViewById(R.id.et_create_swipe_y)
+        etCreateSwipeDistance = findViewById(R.id.et_create_swipe_distance)
+        
+        // EDIT Mode
+        etEditRow1X = findViewById(R.id.et_edit_row1_x)
+        etEditRow1Y = findViewById(R.id.et_edit_row1_y)
+        etEditPriceInputX = findViewById(R.id.et_edit_price_input_x)
+        etEditPriceInputY = findViewById(R.id.et_edit_price_input_y)
+        etEditHardPriceCap = findViewById(R.id.et_edit_hard_price_cap)
+        etEditPriceIncrement = findViewById(R.id.et_edit_price_increment)
+        etEditCreateButtonX = findViewById(R.id.et_edit_create_button_x)
+        etEditCreateButtonY = findViewById(R.id.et_edit_create_button_y)
+        etEditConfirmButtonX = findViewById(R.id.et_edit_confirm_button_x)
+        etEditConfirmButtonY = findViewById(R.id.et_edit_confirm_button_y)
+        
+        // Common
+        etOcrRegionLeft = findViewById(R.id.et_ocr_region_left)
+        etOcrRegionTop = findViewById(R.id.et_ocr_region_top)
+        etOcrRegionRight = findViewById(R.id.et_ocr_region_right)
+        etOcrRegionBottom = findViewById(R.id.et_ocr_region_bottom)
+        etLoopDelay = findViewById(R.id.et_loop_delay)
+        etGestureDuration = findViewById(R.id.et_gesture_duration)
+    }
 
-        findViewById<Button>(R.id.btnSaveCalibration).setOnClickListener {
-            saveCalibration()
+    private fun loadConfig() {
+        val configJson = sharedPrefs.getString("automation_config", null)
+        if (configJson != null) {
+            try {
+                val config = Gson().fromJson(configJson, AutomationConfig::class.java)
+                
+                // CREATE Mode
+                etCreateRowStartX.setText(config.createMode.rowStartX.toString())
+                etCreateRowStartY.setText(config.createMode.rowStartY.toString())
+                etCreateRowEndX.setText(config.createMode.rowEndX.toString())
+                etCreateRowEndY.setText(config.createMode.rowEndY.toString())
+                etCreateRowHeight.setText(config.createMode.rowHeight.toString())
+                etCreatePlusButtonX.setText(config.createMode.plusButtonX.toString())
+                etCreatePlusButtonY.setText(config.createMode.plusButtonY.toString())
+                etCreateHardPriceCap.setText(config.createMode.hardPriceCap.toString())
+                etCreateMaxRows.setText(config.createMode.maxRows.toString())
+                etCreateSwipeX.setText(config.createMode.swipeX.toString())
+                etCreateSwipeY.setText(config.createMode.swipeY.toString())
+                etCreateSwipeDistance.setText(config.createMode.swipeDistance.toString())
+                
+                // EDIT Mode
+                etEditRow1X.setText(config.editMode.row1X.toString())
+                etEditRow1Y.setText(config.editMode.row1Y.toString())
+                etEditPriceInputX.setText(config.editMode.priceInputX.toString())
+                etEditPriceInputY.setText(config.editMode.priceInputY.toString())
+                etEditHardPriceCap.setText(config.editMode.hardPriceCap.toString())
+                etEditPriceIncrement.setText(config.editMode.priceIncrement.toString())
+                etEditCreateButtonX.setText(config.editMode.createButtonX.toString())
+                etEditCreateButtonY.setText(config.editMode.createButtonY.toString())
+                etEditConfirmButtonX.setText(config.editMode.confirmButtonX.toString())
+                etEditConfirmButtonY.setText(config.editMode.confirmButtonY.toString())
+                
+                // Common
+                etOcrRegionLeft.setText(config.ocrRegionLeft.toString())
+                etOcrRegionTop.setText(config.ocrRegionTop.toString())
+                etOcrRegionRight.setText(config.ocrRegionRight.toString())
+                etOcrRegionBottom.setText(config.ocrRegionBottom.toString())
+                etLoopDelay.setText(config.loopDelayMs.toString())
+                etGestureDuration.setText(config.gestureDurationMs.toString())
+                
+            } catch (e: Exception) {
+                Toast.makeText(this, "Error loading config: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
+    }
 
-        findViewById<Button>(R.id.btnResetCalibration).setOnClickListener {
+    private fun setupButtons() {
+        findViewById<Button>(R.id.btn_save_config).setOnClickListener {
+            saveConfig()
+        }
+        
+        findViewById<Button>(R.id.btn_reset_config).setOnClickListener {
             resetToDefaults()
         }
-
-        findViewById<Button>(R.id.btnBack).setOnClickListener {
-            finish()
-        }
     }
 
-    private fun setupTabs() {
-        val tabLayout = findViewById<TabLayout>(R.id.tabLayout)
-        tabLayout.addTab(tabLayout.newTab().setText("Create"))
-        tabLayout.addTab(tabLayout.newTab().setText("Edit"))
-        tabLayout.addTab(tabLayout.newTab().setText("Global"))
-        tabLayout.addTab(tabLayout.newTab().setText("Safety"))
-        tabLayout.addTab(tabLayout.newTab().setText("Advanced"))
-
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab?) {
-                currentTab = tab?.position ?: 0
-                showTabContent(currentTab)
-            }
-            override fun onTabUnselected(tab: TabLayout.Tab?) {}
-            override fun onTabReselected(tab: TabLayout.Tab?) {}
-        })
-    }
-
-    private fun showTabContent(tab: Int) {
-        findViewById<LinearLayout>(R.id.createModeLayout).visibility =
-            if (tab == 0) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.editModeLayout).visibility =
-            if (tab == 1) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.globalLayout).visibility =
-            if (tab == 2) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.safetyLayout).visibility =
-            if (tab == 3) LinearLayout.VISIBLE else LinearLayout.GONE
-        findViewById<LinearLayout>(R.id.advancedLayout).visibility =
-            if (tab == 4) LinearLayout.VISIBLE else LinearLayout.GONE
-    }
-
-    private fun loadCurrentCalibration() {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val calibration = db.calibrationDao().getCalibration() ?: CalibrationData()
-                currentCalibration = calibration
-                withContext(Dispatchers.Main) {
-                    populateFields(calibration)
-                    showTabContent(0)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error loading calibration", e)
-                withContext(Dispatchers.Main) {
-                    populateFields(CalibrationData())
-                    showToast("Error loading calibration: ${e.message}")
-                }
-            }
-        }
-    }
-
-    private fun populateFields(data: CalibrationData) {
-        // ==================== CREATE MODE ====================
-        // MODE 1: FAST LOOP - Tap + button to outbid
-        
-        findViewById<EditText>(R.id.createFirstRowX).setText(data.createMode.firstRowX.toString())
-        findViewById<EditText>(R.id.createFirstRowY).setText(data.createMode.firstRowY.toString())
-        findViewById<EditText>(R.id.createRowYOffset).setText(data.createMode.rowYOffset.toString())
-        findViewById<EditText>(R.id.createMaxRows).setText(data.createMode.maxRowsPerScreen.toString())
-        
-        // PLUS BUTTON Coordinate (tapped to increment price)
-        findViewById<EditText>(R.id.createPlusButtonX).setText(data.createMode.plusButtonX.toString())
-        findViewById<EditText>(R.id.createPlusButtonY).setText(data.createMode.plusButtonY.toString())
-        
-        findViewById<EditText>(R.id.createButtonX).setText(data.createMode.createButtonX.toString())
-        findViewById<EditText>(R.id.createButtonY).setText(data.createMode.createButtonY.toString())
-        findViewById<EditText>(R.id.createConfirmYesX).setText(data.createMode.confirmYesX.toString())
-        findViewById<EditText>(R.id.createConfirmYesY).setText(data.createMode.confirmYesY.toString())
-        findViewById<EditText>(R.id.createCloseX).setText(data.createMode.closeButtonX.toString())
-        findViewById<EditText>(R.id.createCloseY).setText(data.createMode.closeButtonY.toString())
-        
-        // OCR Region (for safety check)
-        findViewById<EditText>(R.id.createOcrLeft).setText(data.createMode.ocrRegionLeft.toString())
-        findViewById<EditText>(R.id.createOcrTop).setText(data.createMode.ocrRegionTop.toString())
-        findViewById<EditText>(R.id.createOcrRight).setText(data.createMode.ocrRegionRight.toString())
-        findViewById<EditText>(R.id.createOcrBottom).setText(data.createMode.ocrRegionBottom.toString())
-        
-        // Hard Price Cap (Safety Kill-Switch)
-        findViewById<EditText>(R.id.createHardPriceCap).setText(data.createMode.hardPriceCap.toString())
-        findViewById<EditText>(R.id.createPriceIncrement).setText(data.createMode.priceIncrement.toString())
-
-        // ==================== EDIT MODE ====================
-        // MODE 2: READ & TYPE LOOP - OCR price, inject via ACTION_SET_TEXT
-        
-        // Edit Button (ONLY ROW 1 - no iteration!)
-        findViewById<EditText>(R.id.editButtonX).setText(data.editMode.editButtonX.toString())
-        findViewById<EditText>(R.id.editButtonY).setText(data.editMode.editButtonY.toString())
-        
-        // Price Input Box (for reference - DO NOT TAP!)
-        findViewById<EditText>(R.id.editPriceInputX).setText(data.editMode.priceInputX.toString())
-        findViewById<EditText>(R.id.editPriceInputY).setText(data.editMode.priceInputY.toString())
-        
-        findViewById<EditText>(R.id.updateButtonX).setText(data.editMode.updateButtonX.toString())
-        findViewById<EditText>(R.id.updateButtonY).setText(data.editMode.updateButtonY.toString())
-        findViewById<EditText>(R.id.editConfirmYesX).setText(data.editMode.confirmYesX.toString())
-        findViewById<EditText>(R.id.editConfirmYesY).setText(data.editMode.confirmYesY.toString())
-        findViewById<EditText>(R.id.editCloseX).setText(data.editMode.closeButtonX.toString())
-        findViewById<EditText>(R.id.editCloseY).setText(data.editMode.closeButtonY.toString())
-        
-        // OCR Region
-        findViewById<EditText>(R.id.editOcrLeft).setText(data.editMode.ocrRegionLeft.toString())
-        findViewById<EditText>(R.id.editOcrTop).setText(data.editMode.ocrRegionTop.toString())
-        findViewById<EditText>(R.id.editOcrRight).setText(data.editMode.ocrRegionRight.toString())
-        findViewById<EditText>(R.id.editOcrBottom).setText(data.editMode.ocrRegionBottom.toString())
-        
-        findViewById<EditText>(R.id.editHardPriceCap).setText(data.editMode.hardPriceCap.toString())
-        findViewById<EditText>(R.id.editPriceIncrement).setText(data.editMode.priceIncrement.toString())
-
-        // ==================== GLOBAL ====================
-        findViewById<EditText>(R.id.networkLagMultiplier).setText(data.global.networkLagMultiplier.toString())
-        findViewById<EditText>(R.id.swipeStartX).setText(data.global.swipeStartX.toString())
-        findViewById<EditText>(R.id.swipeStartY).setText(data.global.swipeStartY.toString())
-        findViewById<EditText>(R.id.swipeEndX).setText(data.global.swipeEndX.toString())
-        findViewById<EditText>(R.id.swipeEndY).setText(data.global.swipeEndY.toString())
-        findViewById<EditText>(R.id.swipeDuration).setText(data.global.swipeDurationMs.toString())
-        findViewById<EditText>(R.id.tapDuration).setText(data.global.tapDurationMs.toString())
-        findViewById<EditText>(R.id.popupOpenWait).setText(data.global.popupOpenWaitMs.toString())
-        findViewById<EditText>(R.id.popupCloseWait).setText(data.global.popupCloseWaitMs.toString())
-        findViewById<EditText>(R.id.confirmationWait).setText(data.global.confirmationWaitMs.toString())
-        findViewById<EditText>(R.id.cycleCooldown).setText(data.global.cycleCooldownMs.toString())
-
-        // ==================== SAFETY ====================
-        findViewById<CheckBox>(R.id.enableOcrSanityCheck).isChecked = data.safety.enableOcrSanityCheck
-        findViewById<EditText>(R.id.maxPriceChangePercent).setText(data.safety.maxPriceChangePercent.toString())
-        findViewById<EditText>(R.id.maxPriceCap).setText(data.safety.maxPriceCap.toString())
-        findViewById<EditText>(R.id.minPriceCap).setText(data.safety.minPriceCap.toString())
-        findViewById<CheckBox>(R.id.autoDismissErrors).isChecked = data.safety.autoDismissErrors
-        findViewById<EditText>(R.id.maxRetries).setText(data.safety.maxRetries.toString())
-
-        // ==================== ADVANCED ====================
-        findViewById<CheckBox>(R.id.enableRandomization).isChecked = data.antiDetection.enableRandomization
-        findViewById<CheckBox>(R.id.randomizeGesturePath).isChecked = data.antiDetection.randomizeGesturePath
-        findViewById<EditText>(R.id.randomDelayRange).setText(data.antiDetection.randomDelayRangeMs.toString())
-        findViewById<EditText>(R.id.pathRandomizationPixels).setText(data.antiDetection.pathRandomizationPixels.toString())
-
-        findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked = data.endOfList.enableEndOfListDetection
-        findViewById<EditText>(R.id.identicalPageThreshold).setText(data.endOfList.identicalPageThreshold.toString())
-        findViewById<EditText>(R.id.maxCyclesBeforeStop).setText(data.endOfList.maxCyclesBeforeStop.toString())
-        findViewById<EditText>(R.id.firstLineOcrLeft).setText(data.endOfList.firstLineOcrLeft.toString())
-        findViewById<EditText>(R.id.firstLineOcrTop).setText(data.endOfList.firstLineOcrTop.toString())
-        findViewById<EditText>(R.id.firstLineOcrRight).setText(data.endOfList.firstLineOcrRight.toString())
-        findViewById<EditText>(R.id.firstLineOcrBottom).setText(data.endOfList.firstLineOcrBottom.toString())
-
-        // CRITICAL: Immersive mode is DISABLED by default
-        findViewById<CheckBox>(R.id.enableWindowVerification).isChecked = false
-        findViewById<EditText>(R.id.gamePackageName).setText(data.immersiveMode.gamePackageName)
-
-        findViewById<CheckBox>(R.id.enableSwipeOverlap).isChecked = data.swipeOverlap.enableSwipeOverlap
-        findViewById<EditText>(R.id.overlapRowCount).setText(data.swipeOverlap.overlapRowCount.toString())
-        findViewById<EditText>(R.id.swipeSettleTime).setText(data.swipeOverlap.swipeSettleTimeMs.toString())
-
-        findViewById<CheckBox>(R.id.enableBatteryOptimization).isChecked = data.battery.enableBatteryOptimization
-        findViewById<EditText>(R.id.pauseOnBatteryBelow).setText(data.battery.pauseOnBatteryBelow.toString())
-
-        findViewById<CheckBox>(R.id.enableSmartRecovery).isChecked = data.errorRecovery.enableSmartRecovery
-        findViewById<EditText>(R.id.maxConsecutiveErrors).setText(data.errorRecovery.maxConsecutiveErrors.toString())
-        findViewById<EditText>(R.id.maxStateStuckTime).setText(data.errorRecovery.maxStateStuckTimeMs.toString())
-        findViewById<CheckBox>(R.id.screenshotOnError).isChecked = data.errorRecovery.screenshotOnError
-
-        findViewById<CheckBox>(R.id.enablePriceHistory).isChecked = data.priceHistory.enablePriceHistory
-        findViewById<CheckBox>(R.id.enableAnomalyDetection).isChecked = data.priceHistory.enableAnomalyDetection
-        findViewById<EditText>(R.id.maxHistoryEntries).setText(data.priceHistory.maxHistoryEntries.toString())
-    }
-
-    private fun saveCalibration() {
+    private fun saveConfig() {
         try {
-            val createConfig = CreateModeConfig(
-                firstRowX = getInt(R.id.createFirstRowX, 100, 0, 2000),
-                firstRowY = getInt(R.id.createFirstRowY, 300, 0, 4000),
-                rowYOffset = getInt(R.id.createRowYOffset, 80, 10, 500),
-                maxRowsPerScreen = getInt(R.id.createMaxRows, 5, 1, 20),
-                plusButtonX = getInt(R.id.createPlusButtonX, 350, 0, 2000),
-                plusButtonY = getInt(R.id.createPlusButtonY, 450, 0, 4000),
-                createButtonX = getInt(R.id.createButtonX, 500, 0, 2000),
-                createButtonY = getInt(R.id.createButtonY, 550, 0, 4000),
-                confirmYesX = getInt(R.id.createConfirmYesX, 500, 0, 2000),
-                confirmYesY = getInt(R.id.createConfirmYesY, 600, 0, 4000),
-                closeButtonX = getInt(R.id.createCloseX, 1000, 0, 2000),
-                closeButtonY = getInt(R.id.createCloseY, 200, 0, 4000),
-                ocrRegionLeft = getInt(R.id.createOcrLeft, 600, 0, 2000),
-                ocrRegionTop = getInt(R.id.createOcrTop, 200, 0, 4000),
-                ocrRegionRight = getInt(R.id.createOcrRight, 1050, 0, 2000),
-                ocrRegionBottom = getInt(R.id.createOcrBottom, 500, 0, 4000),
-                hardPriceCap = getInt(R.id.createHardPriceCap, 100000, 1, 100000000),
-                priceIncrement = getInt(R.id.createPriceIncrement, 1, 1, 10000)
+            val config = AutomationConfig(
+                createMode = CreateModeConfig(
+                    rowStartX = etCreateRowStartX.text.toString().toIntOrNull() ?: 540,
+                    rowStartY = etCreateRowStartY.text.toString().toIntOrNull() ?: 400,
+                    rowEndX = etCreateRowEndX.text.toString().toIntOrNull() ?: 540,
+                    rowEndY = etCreateRowEndY.text.toString().toIntOrNull() ?: 1800,
+                    rowHeight = etCreateRowHeight.text.toString().toIntOrNull() ?: 120,
+                    plusButtonX = etCreatePlusButtonX.text.toString().toIntOrNull() ?: 800,
+                    plusButtonY = etCreatePlusButtonY.text.toString().toIntOrNull() ?: 600,
+                    hardPriceCap = etCreateHardPriceCap.text.toString().toLongOrNull() ?: 100000000L,
+                    maxRows = etCreateMaxRows.text.toString().toIntOrNull() ?: 8,
+                    swipeX = etCreateSwipeX.text.toString().toIntOrNull() ?: 540,
+                    swipeY = etCreateSwipeY.text.toString().toIntOrNull() ?: 1500,
+                    swipeDistance = etCreateSwipeDistance.text.toString().toIntOrNull() ?: 300
+                ),
+                editMode = EditModeConfig(
+                    row1X = etEditRow1X.text.toString().toIntOrNull() ?: 540,
+                    row1Y = etEditRow1Y.text.toString().toIntOrNull() ?: 400,
+                    priceInputX = etEditPriceInputX.text.toString().toIntOrNull() ?: 650,
+                    priceInputY = etEditPriceInputY.text.toString().toIntOrNull() ?: 600,
+                    hardPriceCap = etEditHardPriceCap.text.toString().toLongOrNull() ?: 100000000L,
+                    priceIncrement = etEditPriceIncrement.text.toString().toLongOrNull() ?: 1L,
+                    createButtonX = etEditCreateButtonX.text.toString().toIntOrNull() ?: 900,
+                    createButtonY = etEditCreateButtonY.text.toString().toIntOrNull() ?: 600,
+                    confirmButtonX = etEditConfirmButtonX.text.toString().toIntOrNull() ?: 540,
+                    confirmButtonY = etEditConfirmButtonY.text.toString().toIntOrNull() ?: 1200
+                ),
+                ocrRegionLeft = etOcrRegionLeft.text.toString().toIntOrNull() ?: 400,
+                ocrRegionTop = etOcrRegionTop.text.toString().toIntOrNull() ?: 500,
+                ocrRegionRight = etOcrRegionRight.text.toString().toIntOrNull() ?: 700,
+                ocrRegionBottom = etOcrRegionBottom.text.toString().toIntOrNull() ?: 700,
+                loopDelayMs = etLoopDelay.text.toString().toLongOrNull() ?: 500L,
+                gestureDurationMs = etGestureDuration.text.toString().toLongOrNull() ?: 200L
             )
-
-            val editConfig = EditModeConfig(
-                editButtonX = getInt(R.id.editButtonX, 950, 0, 2000),
-                editButtonY = getInt(R.id.editButtonY, 300, 0, 4000),
-                priceInputX = getInt(R.id.editPriceInputX, 300, 0, 2000),
-                priceInputY = getInt(R.id.editPriceInputY, 400, 0, 4000),
-                updateButtonX = getInt(R.id.updateButtonX, 500, 0, 2000),
-                updateButtonY = getInt(R.id.updateButtonY, 550, 0, 4000),
-                confirmYesX = getInt(R.id.editConfirmYesX, 500, 0, 2000),
-                confirmYesY = getInt(R.id.editConfirmYesY, 600, 0, 4000),
-                closeButtonX = getInt(R.id.editCloseX, 1000, 0, 2000),
-                closeButtonY = getInt(R.id.editCloseY, 200, 0, 4000),
-                ocrRegionLeft = getInt(R.id.editOcrLeft, 600, 0, 2000),
-                ocrRegionTop = getInt(R.id.editOcrTop, 200, 0, 4000),
-                ocrRegionRight = getInt(R.id.editOcrRight, 1050, 0, 2000),
-                ocrRegionBottom = getInt(R.id.editOcrBottom, 500, 0, 4000),
-                hardPriceCap = getInt(R.id.editHardPriceCap, 100000, 1, 100000000),
-                priceIncrement = getInt(R.id.editPriceIncrement, 1, 1, 10000)
-            )
-
-            val globalConfig = GlobalSettings(
-                networkLagMultiplier = getFloat(R.id.networkLagMultiplier, 1.0f, 0.1f, 10.0f),
-                swipeStartX = getInt(R.id.swipeStartX, 500, 0, 2000),
-                swipeStartY = getInt(R.id.swipeStartY, 600, 0, 4000),
-                swipeEndX = getInt(R.id.swipeEndX, 500, 0, 2000),
-                swipeEndY = getInt(R.id.swipeEndY, 300, 0, 4000),
-                swipeDurationMs = getInt(R.id.swipeDuration, 300, 100, 1000),
-                tapDurationMs = getLong(R.id.tapDuration, 200, 150, 500),
-                popupOpenWaitMs = getLong(R.id.popupOpenWait, 300, 100, 2000),
-                popupCloseWaitMs = getLong(R.id.popupCloseWait, 400, 100, 2000),
-                confirmationWaitMs = getLong(R.id.confirmationWait, 400, 100, 2000),
-                cycleCooldownMs = getLong(R.id.cycleCooldown, 200, 50, 5000)
-            )
-
-            val safetyConfig = SafetySettings(
-                enableOcrSanityCheck = findViewById<CheckBox>(R.id.enableOcrSanityCheck).isChecked,
-                maxPriceChangePercent = getFloat(R.id.maxPriceChangePercent, 0.5f, 0.01f, 2.0f),
-                maxPriceCap = getInt(R.id.maxPriceCap, 100000, 1, 100000000),
-                minPriceCap = getInt(R.id.minPriceCap, 1, 1, 100000),
-                autoDismissErrors = findViewById<CheckBox>(R.id.autoDismissErrors).isChecked,
-                maxRetries = getInt(R.id.maxRetries, 3, 1, 10)
-            )
-
-            val antiDetectionConfig = AntiDetectionSettings(
-                enableRandomization = findViewById<CheckBox>(R.id.enableRandomization).isChecked,
-                randomizeGesturePath = findViewById<CheckBox>(R.id.randomizeGesturePath).isChecked,
-                randomDelayRangeMs = getLong(R.id.randomDelayRange, 100, 0, 1000),
-                pathRandomizationPixels = getInt(R.id.pathRandomizationPixels, 5, 0, 20)
-            )
-
-            val endOfListConfig = EndOfListSettings(
-                enableEndOfListDetection = findViewById<CheckBox>(R.id.enableEndOfListDetection).isChecked,
-                identicalPageThreshold = getInt(R.id.identicalPageThreshold, 3, 1, 10),
-                maxCyclesBeforeStop = getInt(R.id.maxCyclesBeforeStop, 500, 10, 5000),
-                firstLineOcrLeft = getInt(R.id.firstLineOcrLeft, 100, 0, 2000),
-                firstLineOcrTop = getInt(R.id.firstLineOcrTop, 300, 0, 4000),
-                firstLineOcrRight = getInt(R.id.firstLineOcrRight, 900, 0, 2000),
-                firstLineOcrBottom = getInt(R.id.firstLineOcrBottom, 350, 0, 4000)
-            )
-
-            // CRITICAL: Immersive mode DISABLED
-            val immersiveModeConfig = ImmersiveModeSettings(
-                enableWindowVerification = false,
-                gamePackageName = findViewById<EditText>(R.id.gamePackageName).text.toString().trim(),
-                actionOnWindowLost = "ignore"
-            )
-
-            val swipeOverlapConfig = SwipeOverlapSettings(
-                enableSwipeOverlap = findViewById<CheckBox>(R.id.enableSwipeOverlap).isChecked,
-                overlapRowCount = getInt(R.id.overlapRowCount, 1, 0, 5),
-                swipeSettleTimeMs = getLong(R.id.swipeSettleTime, 400, 100, 2000)
-            )
-
-            val batteryConfig = BatterySettings(
-                enableBatteryOptimization = findViewById<CheckBox>(R.id.enableBatteryOptimization).isChecked,
-                pauseOnBatteryBelow = getInt(R.id.pauseOnBatteryBelow, 15, 5, 50)
-            )
-
-            val errorRecoveryConfig = ErrorRecoverySettings(
-                enableSmartRecovery = findViewById<CheckBox>(R.id.enableSmartRecovery).isChecked,
-                maxConsecutiveErrors = getInt(R.id.maxConsecutiveErrors, 5, 1, 20),
-                maxStateStuckTimeMs = getLong(R.id.maxStateStuckTime, 60000, 10000, 300000),
-                screenshotOnError = findViewById<CheckBox>(R.id.screenshotOnError).isChecked
-            )
-
-            val priceHistoryConfig = PriceHistorySettings(
-                enablePriceHistory = findViewById<CheckBox>(R.id.enablePriceHistory).isChecked,
-                enableAnomalyDetection = findViewById<CheckBox>(R.id.enableAnomalyDetection).isChecked,
-                maxHistoryEntries = getInt(R.id.maxHistoryEntries, 100, 10, 1000)
-            )
-
-            val updatedData = CalibrationData(
-                id = currentCalibration?.id ?: 0,
-                createMode = createConfig,
-                editMode = editConfig,
-                global = globalConfig,
-                safety = safetyConfig,
-                antiDetection = antiDetectionConfig,
-                endOfList = endOfListConfig,
-                immersiveMode = immersiveModeConfig,
-                swipeOverlap = swipeOverlapConfig,
-                battery = batteryConfig,
-                errorRecovery = errorRecoveryConfig,
-                priceHistory = priceHistoryConfig
-            )
-
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    db.calibrationDao().insertCalibration(updatedData)
-                    currentCalibration = updatedData
-                    withContext(Dispatchers.Main) {
-                        showToast("Settings saved!")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error saving calibration", e)
-                    withContext(Dispatchers.Main) {
-                        showToast("Error saving: ${e.message}")
-                    }
-                }
-            }
+            
+            val configJson = Gson().toJson(config)
+            sharedPrefs.edit().putString("automation_config", configJson).apply()
+            
+            Toast.makeText(this, "Configuration saved!", Toast.LENGTH_SHORT).show()
+            finish()
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Invalid input", e)
-            showToast("Invalid input: ${e.message}")
+            Toast.makeText(this, "Error saving config: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun resetToDefaults() {
-        val defaultData = CalibrationData()
-        populateFields(defaultData)
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                db.calibrationDao().insertCalibration(defaultData)
-                currentCalibration = defaultData
-                withContext(Dispatchers.Main) {
-                    showToast("Reset to defaults!")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error resetting", e)
-            }
-        }
-    }
-
-    private fun getInt(id: Int, default: Int, min: Int = Int.MIN_VALUE, max: Int = Int.MAX_VALUE): Int {
-        val text = findViewById<EditText>(id).text.toString()
-        val value = text.toIntOrNull() ?: default
-        return value.coerceIn(min, max)
-    }
-
-    private fun getLong(id: Int, default: Long, min: Long = Long.MIN_VALUE, max: Long = Long.MAX_VALUE): Long {
-        val text = findViewById<EditText>(id).text.toString()
-        val value = text.toLongOrNull() ?: default
-        return value.coerceIn(min, max)
-    }
-
-    private fun getFloat(id: Int, default: Float, min: Float = Float.MIN_VALUE, max: Float = Float.MAX_VALUE): Float {
-        val text = findViewById<EditText>(id).text.toString()
-        val value = text.toFloatOrNull() ?: default
-        return value.coerceIn(min, max)
-    }
-
-    private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        // CREATE Mode defaults
+        etCreateRowStartX.setText("540")
+        etCreateRowStartY.setText("400")
+        etCreateRowEndX.setText("540")
+        etCreateRowEndY.setText("1800")
+        etCreateRowHeight.setText("120")
+        etCreatePlusButtonX.setText("800")
+        etCreatePlusButtonY.setText("600")
+        etCreateHardPriceCap.setText("100000000")
+        etCreateMaxRows.setText("8")
+        etCreateSwipeX.setText("540")
+        etCreateSwipeY.setText("1500")
+        etCreateSwipeDistance.setText("300")
+        
+        // EDIT Mode defaults
+        etEditRow1X.setText("540")
+        etEditRow1Y.setText("400")
+        etEditPriceInputX.setText("650")
+        etEditPriceInputY.setText("600")
+        etEditHardPriceCap.setText("100000000")
+        etEditPriceIncrement.setText("1")
+        etEditCreateButtonX.setText("900")
+        etEditCreateButtonY.setText("600")
+        etEditConfirmButtonX.setText("540")
+        etEditConfirmButtonY.setText("1200")
+        
+        // Common defaults
+        etOcrRegionLeft.setText("400")
+        etOcrRegionTop.setText("500")
+        etOcrRegionRight.setText("700")
+        etOcrRegionBottom.setText("700")
+        etLoopDelay.setText("500")
+        etGestureDuration.setText("200")
+        
+        Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
     }
 }
+
+// Data classes for config
+data class AutomationConfig(
+    val createMode: CreateModeConfig,
+    val editMode: EditModeConfig,
+    val ocrRegionLeft: Int,
+    val ocrRegionTop: Int,
+    val ocrRegionRight: Int,
+    val ocrRegionBottom: Int,
+    val loopDelayMs: Long,
+    val gestureDurationMs: Long
+)
+
+data class CreateModeConfig(
+    val rowStartX: Int,
+    val rowStartY: Int,
+    val rowEndX: Int,
+    val rowEndY: Int,
+    val rowHeight: Int,
+    val plusButtonX: Int,
+    val plusButtonY: Int,
+    val hardPriceCap: Long,
+    val maxRows: Int,
+    val swipeX: Int,
+    val swipeY: Int,
+    val swipeDistance: Int
+)
+
+data class EditModeConfig(
+    val row1X: Int,
+    val row1Y: Int,
+    val priceInputX: Int,
+    val priceInputY: Int,
+    val hardPriceCap: Long,
+    val priceIncrement: Long,
+    val createButtonX: Int,
+    val createButtonY: Int,
+    val confirmButtonX: Int,
+    val confirmButtonY: Int
+)
