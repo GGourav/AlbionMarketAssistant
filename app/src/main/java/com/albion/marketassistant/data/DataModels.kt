@@ -378,4 +378,51 @@ data class ColorDetectionResult(
     val hexColor: String = "",
     val matchConfidence: Float = 0f,
     val isMatch: Boolean = false
+    // ============================================
+// AUTOMATION CONFIG FOR CALIBRATION ACTIVITY
+// Add these classes at the END of DataModels.kt
+// ============================================
+
+/**
+ * Simplified configuration class for CalibrationActivity UI
+ * Used for SharedPreferences JSON storage
+ */
+data class AutomationConfig(
+    val createMode: SimpleCreateModeConfig = SimpleCreateModeConfig(),
+    val editMode: SimpleEditModeConfig = SimpleEditModeConfig(),
+    val ocrRegionLeft: Int = 400,
+    val ocrRegionTop: Int = 500,
+    val ocrRegionRight: Int = 700,
+    val ocrRegionBottom: Int = 700,
+    val loopDelayMs: Long = 500L,
+    val gestureDurationMs: Long = 200L
+)
+
+data class SimpleCreateModeConfig(
+    val rowStartX: Int = 540,
+    val rowStartY: Int = 400,
+    val rowEndX: Int = 540,
+    val rowEndY: Int = 1800,
+    val rowHeight: Int = 120,
+    val plusButtonX: Int = 800,
+    val plusButtonY: Int = 600,
+    val hardPriceCap: Long = 100000000L,
+    val maxRows: Int = 8,
+    val swipeX: Int = 540,
+    val swipeY: Int = 1500,
+    val swipeDistance: Int = 300
+)
+
+data class SimpleEditModeConfig(
+    val row1X: Int = 540,
+    val row1Y: Int = 400,
+    val priceInputX: Int = 650,
+    val priceInputY: Int = 600,
+    val hardPriceCap: Long = 100000000L,
+    val priceIncrement: Long = 1L,
+    val createButtonX: Int = 900,
+    val createButtonY: Int = 600,
+    val confirmButtonX: Int = 540,
+    val confirmButtonY: Int = 1200
+)
 )
