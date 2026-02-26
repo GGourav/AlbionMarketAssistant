@@ -5,10 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.util.Log
 import com.albion.marketassistant.data.*
-import com.albion.marketassistant.ml.ColorDetector
 import com.albion.marketassistant.ml.OCREngine
 import com.albion.marketassistant.statistics.StatisticsManager
-import com.albion.marketassistant.util.DeviceUtils
 import com.albion.marketassistant.util.RandomizationHelper
 import com.albion.marketassistant.util.TextSimilarity
 import kotlinx.coroutines.*
@@ -28,6 +26,10 @@ class StateMachine(
 
     companion object {
         private const val TAG = "StateMachine"
+        
+        // CRITICAL: Minimum tap duration to prevent ghost taps on 3D game engine
+        private const val MIN_TAP_DURATION_MS = 150L
+        private const val MAX_TAP_DURATION_MS = 300L
     }
 
     private val _stateFlow = MutableStateFlow<AutomationState>(AutomationState(StateType.IDLE))
@@ -45,21 +47,13 @@ class StateMachine(
     private var lastPageText = ""
     private val endOfListDetectionCount = AtomicInteger(0)
 
-    private val windowLostCount = AtomicInteger(0)
-    private val lastWindowCheckTime = AtomicLong(0)
-
-    // Fixed: ColorDetector created but methods can be used if needed
-    private val colorDetector = ColorDetector()
-
     private val randomizationHelper = RandomizationHelper(calibration.antiDetection)
-    private val deviceUtils = context?.let { DeviceUtils(it) }
     private var statisticsManager: StatisticsManager? = null
 
     var onStateChange: ((AutomationState) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onPriceSanityError: ((String) -> Unit)? = null
     var onEndOfList: (() -> Unit)? = null
-    var onWindowLost: (() -> Unit)? = null
     var onStatisticsUpdate: ((SessionStatistics) -> Unit)? = null
     var onScreenshotRequest: (() -> Bitmap?)? = null
 
@@ -83,7 +77,6 @@ class StateMachine(
         lastKnownPrice = null
         lastPageText = ""
         endOfListDetectionCount.set(0)
-        windowLostCount.set(0)
         totalCycleCount.set(0)
 
         statisticsManager?.resetSession()
@@ -102,7 +95,6 @@ class StateMachine(
 
     fun resume() {
         isPaused.set(false)
-        windowLostCount.set(0)
         statisticsManager?.updateState(StateType.IDLE.name)
         updateState(StateType.IDLE, "Resumed")
         Log.d(TAG, "Resumed")
@@ -131,6 +123,15 @@ class StateMachine(
         return randomizationHelper.getRandomizedDelay(withLag)
     }
 
+    /**
+     * CRITICAL: Get safe tap duration (150-300ms) to prevent ghost taps
+     */
+    private fun getSafeTapDuration(): Long {
+        return randomizationHelper.getRandomizedDuration(
+            (MIN_TAP_DURATION_MS + MAX_TAP_DURATION_MS) / 2
+        ).coerceIn(MIN_TAP_DURATION_MS, MAX_TAP_DURATION_MS)
+    }
+
     private suspend fun mainLoop() {
         try {
             while (isRunning.get()) {
@@ -138,20 +139,9 @@ class StateMachine(
                     delay(100)
                 }
 
-                if (!checkBatteryOptimization()) {
-                    pause()
-                    updateState(StateType.ERROR_BATTERY_LOW, "Battery too low - paused")
-                    continue
-                }
-
-                if (!verifyGameWindow()) {
-                    continue
-                }
-
-                if (checkStuckState()) {
-                    handleStuckRecovery()
-                    continue
-                }
+                // CRITICAL OVERHAUL 3: REMOVED immersive mode check
+                // The bot now executes regardless of what Android reports as active window
+                // No more "Game window lost!" false positives
 
                 when (currentMode) {
                     OperationMode.NEW_ORDER_SWEEPER -> executeCreateOrderLoop()
@@ -161,7 +151,6 @@ class StateMachine(
 
                 val cycle = totalCycleCount.incrementAndGet()
                 statisticsManager?.recordCycle()
-                currentRowIndex++
 
                 if (checkEndOfList()) {
                     handleEndOfList()
@@ -175,13 +164,7 @@ class StateMachine(
                 }
 
                 updateState(StateType.COOLDOWN, "Cooldown")
-                val cooldownDelay = randomizationHelper.getRandomizedDelay(calibration.global.cycleCooldownMs)
-
-                if (randomizationHelper.shouldAddHesitation(cycle % 20)) {
-                    delay(randomizationHelper.getHesitationDelay())
-                }
-
-                delay(cooldownDelay)
+                delay(randomizationHelper.getRandomizedDelay(calibration.global.cycleCooldownMs))
             }
         } catch (e: CancellationException) {
             Log.d(TAG, "Main loop cancelled")
@@ -193,97 +176,364 @@ class StateMachine(
         }
     }
 
-    private suspend fun checkBatteryOptimization(): Boolean {
-        val batterySettings = calibration.battery
-        if (!batterySettings.enableBatteryOptimization) return true
+    // =====================================================
+    // MODE 1: CREATE ORDERS (FAST LOOP)
+    // =====================================================
+    // Logic: Opening new buy order auto-fills market average
+    // Action: Tap + button once to outbid
+    // NO text injection, NO price input box tapping
+    // Safety: OCR runs silently, halts if price > Hard Price Cap
+    // =====================================================
+    
+    private suspend fun executeCreateOrderLoop() {
+        try {
+            val config = calibration.createMode
+            val timing = calibration.global
+            val safety = calibration.safety
+            val errorSettings = calibration.errorRecovery
 
-        deviceUtils?.let { utils ->
-            if (utils.isBatteryLow(batterySettings.pauseOnBatteryBelow) && !utils.isCharging()) {
-                return false
-            }
-        }
-        return true
-    }
+            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
 
-    private suspend fun verifyGameWindow(): Boolean {
-        val immersiveSettings = calibration.immersiveMode
-        if (!immersiveSettings.enableWindowVerification) return true
-
-        val now = System.currentTimeMillis()
-        if (now - lastWindowCheckTime.get() < immersiveSettings.windowCheckIntervalMs) {
-            return true
-        }
-        lastWindowCheckTime.set(now)
-
-        deviceUtils?.let { utils ->
-            val isGameActive = utils.isAppInForeground(immersiveSettings.gamePackageName)
-
-            if (!isGameActive) {
-                val lostCount = windowLostCount.incrementAndGet()
-                updateState(StateType.VERIFY_GAME_WINDOW, "Game window check failed ($lostCount/${immersiveSettings.windowLostThreshold})")
-
-                if (lostCount >= immersiveSettings.windowLostThreshold) {
-                    handleWindowLost(immersiveSettings)
-                    return false
-                }
-            } else {
-                windowLostCount.set(0)
-            }
-        }
-        return true
-    }
-
-    private suspend fun handleWindowLost(settings: ImmersiveModeSettings) {
-        statisticsManager?.recordFailure("Game window lost")
-
-        when (settings.actionOnWindowLost) {
-            "pause" -> {
-                updateState(StateType.ERROR_WINDOW_LOST, "Game window lost - paused")
-                onWindowLost?.invoke()
-                pause()
-            }
-            "stop" -> {
-                updateState(StateType.ERROR_WINDOW_LOST, "Game window lost - stopped")
-                onWindowLost?.invoke()
-                stop()
-            }
-        }
-    }
-
-    private fun checkStuckState(): Boolean {
-        val errorSettings = calibration.errorRecovery
-        if (!errorSettings.enableSmartRecovery) return false
-        return statisticsManager?.isStuck(errorSettings.maxStateStuckTimeMs) ?: false
-    }
-
-    private suspend fun handleStuckRecovery() {
-        val errorSettings = calibration.errorRecovery
-        statisticsManager?.recordFailure("Stuck state detected")
-        updateState(StateType.ERROR_STUCK_DETECTED, "Stuck detected - recovering")
-
-        if (errorSettings.screenshotOnError) {
-            onScreenshotRequest?.invoke()?.let { bitmap ->
-                statisticsManager?.saveScreenshot(bitmap, "stuck")
-            }
-        }
-
-        when (errorSettings.actionOnStuck) {
-            "restart" -> {
-                updateState(StateType.RECOVERING, "Auto-restarting...")
+            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
+                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
                 delay(errorSettings.autoRestartDelayMs)
                 currentRowIndex = 0
-                lastPageText = ""
-                endOfListDetectionCount.set(0)
                 statisticsManager?.resetConsecutiveErrors()
+                return
             }
-            "pause" -> pause()
-            "stop" -> stop()
+
+            // STEP 1: Calculate row position
+            val rowX = config.firstRowX
+            val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
+
+            // STEP 2: Tap the market row
+            updateState(StateType.EXECUTE_TAP, "CREATE: Tapping row $currentRowIndex")
+            Log.d(TAG, "CREATE: Tapping row $currentRowIndex at ($rowX, $rowY)")
+            
+            if (!performSafeTap(rowX, rowY)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap row")
+                statisticsManager?.recordFailure("Tap row failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            // STEP 3: Wait for popup to open (300ms minimum)
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
+            delay(300L.withDelays())
+
+            // STEP 4: OCR Safety Check (runs silently in background)
+            // This is a SAFETY NET only - if price exceeds Hard Price Cap, HALT
+            val detectedPrice = performBackgroundOCRSafetyCheck()
+            if (detectedPrice != null && detectedPrice > config.hardPriceCap) {
+                updateState(StateType.ERROR_PRICE_SANITY, 
+                    "SAFETY HALT: Price $detectedPrice > Hard Cap ${config.hardPriceCap}")
+                statisticsManager?.recordFailure("Price cap exceeded: $detectedPrice > ${config.hardPriceCap}")
+                onPriceSanityError?.invoke("Price $detectedPrice exceeds hard cap ${config.hardPriceCap}")
+                handleUnexpectedPopup()
+                return
+            }
+
+            // STEP 5: Tap the PLUS BUTTON (increment price by 1)
+            updateState(StateType.TAP_PLUS_BUTTON, "CREATE: Tapping + button to outbid")
+            Log.d(TAG, "CREATE: Tapping + button at (${config.plusButtonX}, ${config.plusButtonY})")
+            
+            if (!performSafeTap(config.plusButtonX, config.plusButtonY)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap + button")
+                statisticsManager?.recordFailure("Tap + button failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            // Small delay after plus button
+            delay(150L.withDelays())
+
+            // STEP 6: Tap CREATE button
+            updateState(StateType.EXECUTE_BUTTON, "CREATE: Tapping Create button")
+            Log.d(TAG, "CREATE: Tapping Create button at (${config.createButtonX}, ${config.createButtonY})")
+            
+            if (!performSafeTap(config.createButtonX, config.createButtonY)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap Create button")
+                statisticsManager?.recordFailure("Tap Create button failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            delay(timing.confirmationWaitMs.withDelays())
+
+            // STEP 7: Check for Confirmation popup and tap YES
+            updateState(StateType.HANDLE_CONFIRMATION, "CREATE: Confirming order")
+            Log.d(TAG, "CREATE: Tapping Confirm Yes at (${config.confirmYesX}, ${config.confirmYesY})")
+            
+            performSafeTap(config.confirmYesX, config.confirmYesY)
+            delay(timing.popupCloseWaitMs.withDelays())
+
+            // SUCCESS!
+            statisticsManager?.recordSuccess("CREATE", detectedPrice)
+            if (detectedPrice != null) {
+                statisticsManager?.recordPrice("item_$currentRowIndex", detectedPrice + 1, "CREATE", true)
+            }
+            
+            updateState(StateType.COMPLETE_ITERATION, "Order created successfully")
+            lastKnownPrice = detectedPrice
+            
+            // STEP 8: Handle row iteration (swipe after max rows)
+            handleCreateModeRowIteration(config.maxRowsPerScreen, timing)
+
+        } catch (e: Exception) {
+            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            statisticsManager?.recordFailure("Exception: ${e.message}")
+            Log.e(TAG, "Create order loop error", e)
+            handleUnexpectedPopup()
+        }
+    }
+
+    /**
+     * CREATE MODE: After Max Rows, execute Swipe
+     */
+    private suspend fun handleCreateModeRowIteration(maxRows: Int, timing: GlobalSettings) {
+        currentRowIndex++
+        
+        if (currentRowIndex >= maxRows) {
+            // Swipe to next page
+            updateState(StateType.SCROLL_NEXT_ROW, "CREATE: Swiping to next page...")
+            Log.d(TAG, "CREATE: Swiping after $maxRows rows")
+            
+            performSafeSwipe(
+                timing.swipeStartX, timing.swipeStartY,
+                timing.swipeEndX, timing.swipeEndY
+            )
+            
+            val settleTime = if (calibration.swipeOverlap.enableSwipeOverlap) {
+                calibration.swipeOverlap.swipeSettleTimeMs
+            } else {
+                400L
+            }
+            delay(randomizationHelper.getRandomizedDelay(settleTime))
+            
+            // Reset row index after swipe
+            currentRowIndex = 0
+        }
+    }
+
+    // =====================================================
+    // MODE 2: EDIT ORDERS (READ & TYPE LOOP)
+    // =====================================================
+    // Logic: Editing pushes order to bottom of list
+    // Action: Always tap Row 1, read price, inject new price
+    // NO swiping, NO row iteration
+    // MUST use ACTION_SET_TEXT (no keyboard popup)
+    // =====================================================
+    
+    private suspend fun executeEditOrderLoop() {
+        try {
+            val config = calibration.editMode
+            val timing = calibration.global
+            val safety = calibration.safety
+            val errorSettings = calibration.errorRecovery
+
+            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
+
+            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
+                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
+                delay(errorSettings.autoRestartDelayMs)
+                statisticsManager?.resetConsecutiveErrors()
+                return
+            }
+
+            // CRITICAL: EDIT MODE ALWAYS TAPS ROW 1
+            // Editing pushes order to bottom, so next order is always at Row 1
+            val editX = config.editButtonX
+            val editY = config.editButtonY  // Always Row 1 - NO iteration
+
+            // STEP 1: Tap Edit button on Row 1
+            updateState(StateType.EXECUTE_TAP, "EDIT: Tapping Edit button (Row 1)")
+            Log.d(TAG, "EDIT: Tapping Edit button at ($editX, $editY)")
+            
+            if (!performSafeTap(editX, editY)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap Edit button")
+                statisticsManager?.recordFailure("Tap Edit button failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            // STEP 2: Wait for popup to open
+            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
+            delay(timing.popupOpenWaitMs.withDelays())
+
+            // STEP 3: Read OCR Top Price
+            updateState(StateType.SCAN_OCR, "EDIT: Reading current price via OCR")
+            val detectedPrice = performPriceOCR()
+            
+            if (detectedPrice == null) {
+                // OCR failed - could be end of list
+                updateState(StateType.ERROR_END_OF_LIST, "EDIT: OCR failed - possibly end of list")
+                Log.w(TAG, "EDIT: OCR returned null - treating as end of list")
+                handleUnexpectedPopup()
+                statisticsManager?.recordFailure("OCR failed - end of list")
+                return
+            }
+
+            // STEP 4: Calculate new price (Top Price + 1)
+            val newPrice = detectedPrice + config.priceIncrement
+            Log.d(TAG, "EDIT: Detected price $detectedPrice, new price: $newPrice")
+
+            // STEP 5: Safety check against Hard Price Cap
+            if (newPrice > config.hardPriceCap) {
+                updateState(StateType.ERROR_PRICE_SANITY, 
+                    "SAFETY HALT: New price $newPrice > Hard Cap ${config.hardPriceCap}")
+                statisticsManager?.recordFailure("Price cap exceeded: $newPrice > ${config.hardPriceCap}")
+                onPriceSanityError?.invoke("New price $newPrice exceeds hard cap ${config.hardPriceCap}")
+                handleUnexpectedPopup()
+                return
+            }
+
+            // STEP 6: INJECT TEXT using ACTION_SET_TEXT (NO keyboard popup)
+            // CRITICAL: Do NOT use dispatchGesture to tap the text box!
+            updateState(StateType.EXECUTE_TEXT_INPUT, "EDIT: Injecting price $newPrice via ACTION_SET_TEXT")
+            Log.d(TAG, "EDIT: Injecting price $newPrice via AccessibilityNodeInfo")
+            
+            // First clear the field, then inject new price
+            if (!uiInteractor.clearTextField()) {
+                Log.w(TAG, "EDIT: Failed to clear text field, attempting inject anyway")
+            }
+            
+            delay(50L)
+            
+            if (!uiInteractor.injectText(newPrice.toString())) {
+                updateState(StateType.ERROR_RETRY, "Failed to inject text")
+                statisticsManager?.recordFailure("Text injection failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            lastKnownPrice = newPrice
+            delay(timing.textInputDelayMs.withDelays())
+
+            // STEP 7: Tap UPDATE button
+            updateState(StateType.EXECUTE_BUTTON, "EDIT: Tapping Update button")
+            Log.d(TAG, "EDIT: Tapping Update button at (${config.updateButtonX}, ${config.updateButtonY})")
+            
+            if (!performSafeTap(config.updateButtonX, config.updateButtonY)) {
+                updateState(StateType.ERROR_RETRY, "Failed to tap Update button")
+                statisticsManager?.recordFailure("Tap Update button failed")
+                handleUnexpectedPopup()
+                return
+            }
+
+            delay(timing.confirmationWaitMs.withDelays())
+
+            // STEP 8: Check for Confirmation popup and tap YES
+            updateState(StateType.HANDLE_CONFIRMATION, "EDIT: Confirming update")
+            Log.d(TAG, "EDIT: Tapping Confirm Yes at (${config.confirmYesX}, ${config.confirmYesY})")
+            
+            performSafeTap(config.confirmYesX, config.confirmYesY)
+            delay(timing.popupCloseWaitMs.withDelays())
+
+            // SUCCESS!
+            statisticsManager?.recordSuccess("EDIT", newPrice)
+            statisticsManager?.recordPrice("edit_order", newPrice, "EDIT", true)
+            
+            updateState(StateType.COMPLETE_ITERATION, "Order updated successfully")
+
+            // CRITICAL: EDIT MODE DOES NOT ITERATE ROWS
+            // DO NOT SWIPE. DO NOT INCREMENT currentRowIndex.
+            // Always return to tap Row 1 on next iteration
+            
+        } catch (e: Exception) {
+            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
+            statisticsManager?.recordFailure("Exception: ${e.message}")
+            Log.e(TAG, "Edit order loop error", e)
+            handleUnexpectedPopup()
+        }
+    }
+
+    // =====================================================
+    // HELPER METHODS
+    // =====================================================
+
+    /**
+     * CRITICAL: Perform a SAFE tap with proper duration (150-300ms)
+     * This prevents ghost taps on the 3D game engine
+     */
+    private suspend fun performSafeTap(x: Int, y: Int): Boolean {
+        val duration = getSafeTapDuration()
+        Log.d(TAG, "Safe tap at ($x, $y) with duration ${duration}ms")
+        return uiInteractor.performTap(x, y, duration)
+    }
+
+    /**
+     * Perform a safe swipe
+     */
+    private fun performSafeSwipe(startX: Int, startY: Int, endX: Int, endY: Int): Boolean {
+        val distance = abs(endY - startY)
+        val randomizedDistance = randomizationHelper.getRandomizedSwipeDistance(distance)
+        val actualEndY = startY - randomizedDistance
+        val duration = randomizationHelper.getRandomizedDuration(calibration.global.swipeDurationMs.toLong())
+            .coerceIn(200L, 500L)  // Minimum 200ms for swipe
+
+        return uiInteractor.performSwipe(startX, startY, endX, actualEndY, duration)
+    }
+
+    /**
+     * OCR Safety Check for CREATE mode (runs silently in background)
+     * Only returns price if OCR succeeds; null means OCR failed (continue anyway)
+     */
+    private suspend fun performBackgroundOCRSafetyCheck(): Int? {
+        if (!calibration.safety.enableOcrSanityCheck) return null
+
+        val bitmap = onScreenshotRequest?.invoke() ?: return null
+        val ocrRegion = calibration.createMode.getOCRRegion()
+        
+        return try {
+            val results = OCREngine.recognizeText(bitmap, ocrRegion)
+            val price = results
+                .filter { it.isNumber && it.numericValue != null }
+                .maxByOrNull { it.confidence }
+                ?.numericValue
+            
+            if (price != null) {
+                Log.d(TAG, "OCR Safety Check - Detected price: $price")
+            }
+            price
+        } catch (e: Exception) {
+            Log.e(TAG, "OCR Safety Check failed", e)
+            null
+        }
+    }
+
+    /**
+     * Read price via OCR for EDIT mode
+     */
+    private suspend fun performPriceOCR(): Int? {
+        val bitmap = onScreenshotRequest?.invoke() ?: return null
+        val ocrRegion = calibration.editMode.getOCRRegion()
+        
+        return try {
+            val results = OCREngine.recognizeText(bitmap, ocrRegion)
+            val price = results
+                .filter { it.isNumber && it.numericValue != null }
+                .maxByOrNull { it.confidence }
+                ?.numericValue
+            
+            if (price != null) {
+                Log.d(TAG, "Price OCR - Detected: $price")
+                lastKnownPrice = price
+            }
+            price
+        } catch (e: Exception) {
+            Log.e(TAG, "Price OCR failed", e)
+            null
         }
     }
 
     private suspend fun checkEndOfList(): Boolean {
         val eolSettings = calibration.endOfList
         if (!eolSettings.enableEndOfListDetection) return false
+
+        // For EDIT mode, we detect end of list differently (OCR failure)
+        if (currentMode == OperationMode.ORDER_EDITOR) {
+            return false  // Handled in executeEditOrderLoop
+        }
 
         val currentText = captureAndOCRFirstLine() ?: return false
 
@@ -318,7 +568,7 @@ class StateMachine(
         onEndOfList?.invoke()
         statisticsManager?.exportSessionLog()
 
-        if (calibration.swipeOverlap.enableScrollTracking) {
+        if (calibration.swipeOverlap.enableScrollTracking && currentMode == OperationMode.NEW_ORDER_SWEEPER) {
             currentRowIndex = 0
             lastPageText = ""
             endOfListDetectionCount.set(0)
@@ -327,45 +577,6 @@ class StateMachine(
         } else {
             stop()
         }
-    }
-
-    /**
-     * Fixed: Actually verify UI element by checking screenshot
-     */
-    private suspend fun verifyUIElement(
-        x: Int, 
-        y: Int, 
-        expectedColorHex: String, 
-        timeoutMs: Long
-    ): Boolean {
-        val startTime = System.currentTimeMillis()
-        
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            if (isPaused.get()) {
-                delay(100)
-                continue
-            }
-            
-            // Take screenshot and check color
-            val bitmap = onScreenshotRequest?.invoke()
-            if (bitmap != null && !bitmap.isRecycled) {
-                try {
-                    val isMatch = colorDetector.isColorMatch(
-                        bitmap, x, y, expectedColorHex, 
-                        calibration.global.colorToleranceRGB
-                    )
-                    if (isMatch) {
-                        return true
-                    }
-                } finally {
-                    // Don't recycle - bitmap is cached
-                }
-            }
-            
-            delay(100)
-        }
-        
-        return false
     }
 
     private suspend fun handleUnexpectedPopup() {
@@ -386,312 +597,8 @@ class StateMachine(
             calibration.editMode.closeButtonY
         }
 
-        performTapWithRandomization(closeX, closeY)
+        performSafeTap(closeX, closeY)
         delay(300L.withDelays())
-        uiInteractor.dismissKeyboard()
-        delay(300L.withDelays())
-    }
-
-    private fun performTapWithRandomization(x: Int, y: Int): Boolean {
-        val duration = randomizationHelper.getRandomizedDuration(calibration.global.tapDurationMs)
-        return uiInteractor.performTap(x, y, duration)
-    }
-
-    private fun performSwipeWithRandomization(startX: Int, startY: Int, endX: Int, endY: Int): Boolean {
-        val swipeSettings = calibration.swipeOverlap
-        val adjustedStartY = if (swipeSettings.enableSwipeOverlap) {
-            startY + (swipeSettings.overlapRowCount * calibration.createMode.rowYOffset)
-        } else {
-            startY
-        }
-
-        val distance = abs(endY - adjustedStartY)
-        val randomizedDistance = randomizationHelper.getRandomizedSwipeDistance(distance)
-        val actualEndY = adjustedStartY - randomizedDistance
-        val duration = randomizationHelper.getRandomizedDuration(calibration.global.swipeDurationMs.toLong())
-
-        return uiInteractor.performSwipe(startX, adjustedStartY, endX, actualEndY, duration)
-    }
-
-    private fun validatePrice(price: Int?): PriceValidationResult {
-        if (price == null) {
-            return PriceValidationResult(false, "Could not read price")
-        }
-
-        val safety = calibration.safety
-
-        if (price < safety.minPriceCap) {
-            return PriceValidationResult(false, "Price below minimum: $price")
-        }
-
-        if (price > safety.maxPriceCap) {
-            return PriceValidationResult(false, "Price exceeds cap: $price > ${safety.maxPriceCap}")
-        }
-
-        if (safety.enableOcrSanityCheck && lastKnownPrice != null) {
-            val changePercent = abs(price - lastKnownPrice!!).toFloat() / lastKnownPrice!!
-            if (changePercent > safety.maxPriceChangePercent) {
-                val percentInt = (changePercent * 100).toInt()
-                return PriceValidationResult(false, "Price change too large: $percentInt%")
-            }
-        }
-
-        statisticsManager?.let { stats ->
-            if (calibration.priceHistory.enableAnomalyDetection) {
-                if (stats.detectPriceAnomaly("current", price)) {
-                    return PriceValidationResult(false, "Price anomaly detected")
-                }
-            }
-        }
-
-        return PriceValidationResult(true, "OK")
-    }
-
-    data class PriceValidationResult(val isValid: Boolean, val message: String)
-
-    private suspend fun executeWithRetry(maxRetries: Int, action: suspend () -> Boolean): Boolean {
-        var attempts = 0
-
-        while (attempts < maxRetries) {
-            if (action()) {
-                retryCount.set(0)
-                return true
-            }
-
-            attempts++
-            retryCount.set(attempts)
-            statisticsManager?.recordFailure("Retry attempt $attempts")
-
-            if (attempts >= maxRetries) {
-                handleUnexpectedPopup()
-            }
-
-            delay(randomizationHelper.getRandomDelay(300, 700))
-        }
-        return false
-    }
-
-    private suspend fun executeCreateOrderLoop() {
-        try {
-            val config = calibration.createMode
-            val timing = calibration.global
-            val safety = calibration.safety
-            val errorSettings = calibration.errorRecovery
-
-            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
-
-            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
-                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
-                delay(errorSettings.autoRestartDelayMs)
-                currentRowIndex = 0
-                statisticsManager?.resetConsecutiveErrors()
-                return
-            }
-
-            val rowX = config.firstRowX
-            val rowY = config.firstRowY + (currentRowIndex * config.rowYOffset)
-
-            updateState(StateType.EXECUTE_TAP, "Tapping row $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(rowX, rowY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap row after ${safety.maxRetries} retries")
-                statisticsManager?.recordFailure("Tap row failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
-            delay(timing.popupOpenWaitMs.withDelays())
-
-            updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.priceInputX, config.priceInputY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
-                statisticsManager?.recordFailure("Tap price box failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(100L.withDelays())
-
-            val priceToInject = calculatePrice()
-            val validation = validatePrice(priceToInject)
-
-            if (!validation.isValid) {
-                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
-                statisticsManager?.recordFailure("Price validation failed: ${validation.message}")
-                onPriceSanityError?.invoke(validation.message)
-                handleUnexpectedPopup()
-                return
-            }
-
-            statisticsManager?.recordPrice("item_$currentRowIndex", priceToInject, "CREATE", true)
-
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
-            uiInteractor.clearTextField()
-            delay(50L.withDelays())
-
-            if (!uiInteractor.injectText(priceToInject.toString())) {
-                updateState(StateType.ERROR_RETRY, "Failed to inject text")
-                statisticsManager?.recordFailure("Text injection failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            lastKnownPrice = priceToInject
-            delay(timing.textInputDelayMs.withDelays())
-
-            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
-            uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs.withDelays())
-
-            updateState(StateType.EXECUTE_BUTTON, "Creating order")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.createButtonX, config.createButtonY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap create button")
-                statisticsManager?.recordFailure("Tap create button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(timing.confirmationWaitMs.withDelays())
-
-            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
-            performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-            delay(timing.popupCloseWaitMs.withDelays())
-
-            statisticsManager?.recordSuccess("CREATE", priceToInject)
-            handleRowIteration(config.maxRowsPerScreen, timing)
-
-        } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
-            statisticsManager?.recordFailure("Exception: ${e.message}")
-            Log.e(TAG, "Create order loop error", e)
-            handleUnexpectedPopup()
-        }
-    }
-
-    private suspend fun executeEditOrderLoop() {
-        try {
-            val config = calibration.editMode
-            val timing = calibration.global
-            val safety = calibration.safety
-            val errorSettings = calibration.errorRecovery
-
-            statisticsManager?.updateState(StateType.EXECUTE_TAP.name)
-
-            if ((statisticsManager?.getConsecutiveErrors() ?: 0) >= errorSettings.autoRestartAfterErrors) {
-                updateState(StateType.RECOVERING, "Too many errors - auto-restart")
-                delay(errorSettings.autoRestartDelayMs)
-                currentRowIndex = 0
-                statisticsManager?.resetConsecutiveErrors()
-                return
-            }
-
-            val editX = config.editButtonX
-            val editY = config.editButtonY + (currentRowIndex * config.editButtonYOffset)
-
-            updateState(StateType.EXECUTE_TAP, "Tapping edit button $currentRowIndex")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(editX, editY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap edit button")
-                statisticsManager?.recordFailure("Tap edit button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            updateState(StateType.WAIT_POPUP_OPEN, "Waiting for popup")
-            delay(timing.popupOpenWaitMs.withDelays())
-
-            updateState(StateType.EXECUTE_TAP, "Tapping price input")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.priceInputX, config.priceInputY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap price box")
-                statisticsManager?.recordFailure("Tap price box failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(100L.withDelays())
-
-            val priceToInject = calculatePrice()
-            val validation = validatePrice(priceToInject)
-
-            if (!validation.isValid) {
-                updateState(StateType.ERROR_PRICE_SANITY, validation.message)
-                statisticsManager?.recordFailure("Price validation failed: ${validation.message}")
-                onPriceSanityError?.invoke(validation.message)
-                handleUnexpectedPopup()
-                return
-            }
-
-            statisticsManager?.recordPrice("item_$currentRowIndex", priceToInject, "EDIT", true)
-
-            updateState(StateType.EXECUTE_TEXT_INPUT, "Injecting price: $priceToInject")
-            uiInteractor.clearTextField()
-            delay(50L.withDelays())
-
-            if (!uiInteractor.injectText(priceToInject.toString())) {
-                updateState(StateType.ERROR_RETRY, "Failed to inject text")
-                statisticsManager?.recordFailure("Text injection failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            lastKnownPrice = priceToInject
-            delay(timing.textInputDelayMs.withDelays())
-
-            updateState(StateType.DISMISS_KEYBOARD, "Dismissing keyboard")
-            uiInteractor.dismissKeyboard()
-            delay(timing.keyboardDismissDelayMs.withDelays())
-
-            updateState(StateType.EXECUTE_BUTTON, "Updating order")
-            if (!executeWithRetry(safety.maxRetries) { performTapWithRandomization(config.updateButtonX, config.updateButtonY) }) {
-                updateState(StateType.ERROR_RETRY, "Failed to tap update button")
-                statisticsManager?.recordFailure("Tap update button failed")
-                handleUnexpectedPopup()
-                return
-            }
-
-            delay(timing.confirmationWaitMs.withDelays())
-
-            updateState(StateType.HANDLE_CONFIRMATION, "Checking confirmation")
-            performTapWithRandomization(config.confirmYesX, config.confirmYesY)
-            delay(timing.popupCloseWaitMs.withDelays())
-
-            statisticsManager?.recordSuccess("EDIT", priceToInject)
-            handleRowIteration(5, timing)
-
-        } catch (e: Exception) {
-            updateState(StateType.ERROR_RETRY, "Error: ${e.message}")
-            statisticsManager?.recordFailure("Exception: ${e.message}")
-            Log.e(TAG, "Edit order loop error", e)
-            handleUnexpectedPopup()
-        }
-    }
-
-    private fun calculatePrice(): Int {
-        val basePrice = lastKnownPrice ?: calibration.createMode.defaultBuyPrice
-        val trend = statisticsManager?.getPriceTrend("current") ?: 0
-        val increment = calibration.createMode.priceIncrement
-
-        return when {
-            trend > 0 -> basePrice + (increment * 2)
-            trend < 0 -> basePrice + increment
-            else -> basePrice + increment
-        }
-    }
-
-    private suspend fun handleRowIteration(maxRows: Int, timing: GlobalSettings) {
-        if (currentRowIndex > 0 && currentRowIndex % maxRows == 0) {
-            updateState(StateType.SCROLL_NEXT_ROW, "Scrolling...")
-            performSwipeWithRandomization(
-                timing.swipeStartX, timing.swipeStartY,
-                timing.swipeEndX, timing.swipeEndY
-            )
-
-            val settleTime = if (calibration.swipeOverlap.enableSwipeOverlap) {
-                calibration.swipeOverlap.swipeSettleTimeMs
-            } else {
-                300L
-            }
-            delay(randomizationHelper.getRandomizedDelay(settleTime))
-        }
     }
 
     private fun updateState(stateType: StateType, message: String = "") {
@@ -708,8 +615,7 @@ class StateMachine(
             lastPrice = lastKnownPrice,
             statistics = stats,
             lastPageText = lastPageText,
-            endOfListCount = endOfListDetectionCount.get(),
-            windowLostCount = windowLostCount.get()
+            endOfListCount = endOfListDetectionCount.get()
         )
 
         _stateFlow.value = state
