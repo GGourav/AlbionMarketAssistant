@@ -1,7 +1,4 @@
 // FILE: app/src/main/java/com/albion/marketassistant/ui/settings/CalibrationActivity.kt
-// ============================================
-// CalibrationActivity.kt - Fixed (Removed enableWindowVerification)
-// ============================================
 
 package com.albion.marketassistant.ui.settings
 
@@ -158,7 +155,7 @@ class CalibrationActivity : AppCompatActivity() {
     private fun saveConfig() {
         try {
             val config = AutomationConfig(
-                createMode = CreateModeConfig(
+                createMode = com.albion.marketassistant.data.CreateModeConfig(
                     rowStartX = etCreateRowStartX.text.toString().toIntOrNull() ?: 540,
                     rowStartY = etCreateRowStartY.text.toString().toIntOrNull() ?: 400,
                     rowEndX = etCreateRowEndX.text.toString().toIntOrNull() ?: 540,
@@ -172,7 +169,7 @@ class CalibrationActivity : AppCompatActivity() {
                     swipeY = etCreateSwipeY.text.toString().toIntOrNull() ?: 1500,
                     swipeDistance = etCreateSwipeDistance.text.toString().toIntOrNull() ?: 300
                 ),
-                editMode = EditModeConfig(
+                editMode = com.albion.marketassistant.data.EditModeConfig(
                     row1X = etEditRow1X.text.toString().toIntOrNull() ?: 540,
                     row1Y = etEditRow1Y.text.toString().toIntOrNull() ?: 400,
                     priceInputX = etEditPriceInputX.text.toString().toIntOrNull() ?: 650,
@@ -241,43 +238,3 @@ class CalibrationActivity : AppCompatActivity() {
         Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
     }
 }
-
-// Data classes for config
-data class AutomationConfig(
-    val createMode: CreateModeConfig,
-    val editMode: EditModeConfig,
-    val ocrRegionLeft: Int,
-    val ocrRegionTop: Int,
-    val ocrRegionRight: Int,
-    val ocrRegionBottom: Int,
-    val loopDelayMs: Long,
-    val gestureDurationMs: Long
-)
-
-data class CreateModeConfig(
-    val rowStartX: Int,
-    val rowStartY: Int,
-    val rowEndX: Int,
-    val rowEndY: Int,
-    val rowHeight: Int,
-    val plusButtonX: Int,
-    val plusButtonY: Int,
-    val hardPriceCap: Long,
-    val maxRows: Int,
-    val swipeX: Int,
-    val swipeY: Int,
-    val swipeDistance: Int
-)
-
-data class EditModeConfig(
-    val row1X: Int,
-    val row1Y: Int,
-    val priceInputX: Int,
-    val priceInputY: Int,
-    val hardPriceCap: Long,
-    val priceIncrement: Long,
-    val createButtonX: Int,
-    val createButtonY: Int,
-    val confirmButtonX: Int,
-    val confirmButtonY: Int
-)
