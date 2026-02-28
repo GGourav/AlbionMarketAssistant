@@ -14,10 +14,19 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Calibration Settings"
+            android:text="⚙️ Calibration Settings"
             android:textColor="#ffffff"
             android:textSize="24sp"
             android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+            
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="All coordinates are PERCENTAGES (0.0-1.0)"
+            android:textColor="#888888"
+            android:textSize="12sp"
             android:gravity="center"
             android:layout_marginBottom="24dp" />
 
@@ -25,18 +34,18 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="=== CREATE MODE (Fast Loop) ==="
+            android:text="=== CREATE BUY ORDER MODE ==="
             android:textColor="#00ff88"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
 
-        <!-- Row Start Position -->
+        <!-- Buy Order Button Position -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="First Row Position (X, Y)"
-            android:textColor="#aaaaaa"
+            android:text="Buy Order Button (X%, Y%)"
+            android:textColor="#ffaa00"
             android:textSize="14sp" />
         <LinearLayout
             android:layout_width="match_parent"
@@ -44,43 +53,60 @@
             android:orientation="horizontal"
             android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_create_row_start_x"
+                android:id="@+id/et_buy_order_btn_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="100"
+                android:inputType="numberDecimal"
+                android:text="0.82"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_create_row_start_y"
+                android:id="@+id/et_buy_order_btn_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="300"
+                android:inputType="numberDecimal"
+                android:text="0.35"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- Row Height -->
+        <!-- Row Offset -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Row Height (pixels between rows)"
+            android:text="Row Y Offset % (distance between rows)"
             android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_create_row_height"
+            android:id="@+id/et_row_offset_y"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:inputType="numberDecimal"
+            android:text="0.10"
+            android:textColor="#ffffff"
+            android:background="#2a2a4e"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Max Rows -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Max Rows Per Screen"
+            android:textColor="#aaaaaa"
+            android:textSize="14sp" />
+        <EditText
+            android:id="@+id/et_max_rows"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
-            android:text="80"
+            android:text="6"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
             android:layout_marginBottom="12dp" />
@@ -89,7 +115,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="PLUS Button (X, Y) - Tap to increment price"
+            android:text="+ Button Position (X%, Y%)"
             android:textColor="#ffaa00"
             android:textSize="14sp" />
         <LinearLayout
@@ -98,297 +124,133 @@
             android:orientation="horizontal"
             android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_create_plus_button_x"
+                android:id="@+id/et_plus_btn_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="350"
+                android:inputType="numberDecimal"
+                android:text="0.78"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_create_plus_button_y"
+                android:id="@+id/et_plus_btn_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="450"
+                android:inputType="numberDecimal"
+                android:text="0.62"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- CREATE Button - NEW FIELD -->
+        <!-- Confirm Button -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="CREATE Button (X, Y) - CREATE ORDER button"
-            android:textColor="#00ff00"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_create_button_x"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="X"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_create_button_y"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="550"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Y"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-
-        <!-- Confirm Yes Button - NEW FIELD -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Confirm YES (X, Y) - Tap YES on confirmation popup"
-            android:textColor="#00ff00"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_create_confirm_yes_x"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="X"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_create_confirm_yes_y"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="600"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Y"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-
-        <!-- Close Button - NEW FIELD -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Close Button (X, Y) - For error popups"
-            android:textColor="#ff6666"
+            android:text="Confirm Button (X%, Y%)"
+            android:textColor="#ffaa00"
             android:textSize="14sp" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_create_close_button_x"
+                android:id="@+id/et_confirm_btn_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="1000"
+                android:inputType="numberDecimal"
+                android:text="0.75"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_create_close_button_y"
+                android:id="@+id/et_confirm_btn_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="200"
+                android:inputType="numberDecimal"
+                android:text="0.88"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- Hard Price Cap -->
+        <!-- Scroll Settings -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Scroll: Start Y% → End Y%"
+            android:textColor="#aaaaaa"
+            android:textSize="14sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+            <EditText
+                android:id="@+id/et_scroll_start_y"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:text="0.75"
+                android:textColor="#ffffff"
+                android:background="#2a2a4e"
+                android:layout_marginEnd="8dp"
+                android:hint="Start"
+                android:textColorHint="#666666" />
+            <EditText
+                android:id="@+id/et_scroll_end_y"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:text="0.35"
+                android:textColor="#ffffff"
+                android:background="#2a2a4e"
+                android:hint="End"
+                android:textColorHint="#666666" />
+        </LinearLayout>
+
+        <!-- Max Items & Price Cap -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Max Items to Process"
+            android:textColor="#aaaaaa"
+            android:textSize="14sp" />
+        <EditText
+            android:id="@+id/et_max_items_create"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:inputType="number"
+            android:text="50"
+            android:textColor="#ffffff"
+            android:background="#2a2a4e"
+            android:layout_marginBottom="8dp" />
+            
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Hard Price Cap (safety limit)"
-            android:textColor="#aaaaaa"
+            android:textColor="#ff6666"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_create_hard_price_cap"
+            android:id="@+id/et_hard_price_cap_create"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
             android:text="100000"
-            android:textColor="#ffffff"
-            android:background="#2a2a4e"
-            android:layout_marginBottom="12dp" />
-
-        <!-- Max Rows -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Max Rows Before Swipe"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <EditText
-            android:id="@+id/et_create_max_rows"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:inputType="number"
-            android:text="5"
-            android:textColor="#ffffff"
-            android:background="#2a2a4e"
-            android:layout_marginBottom="12dp" />
-
-        <!-- OCR Region -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="OCR Region (Left, Top)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_create_ocr_left"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="600"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="Left"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_create_ocr_top"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="200"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Top"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="OCR Region (Right, Bottom)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="12dp">
-            <EditText
-                android:id="@+id/et_create_ocr_right"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="1050"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="Right"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_create_ocr_bottom"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Bottom"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-
-        <!-- Swipe Settings -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Swipe Start (X, Y)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_create_swipe_x"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="540"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="X"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_create_swipe_y"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="1500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Y"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Swipe Distance (pixels up)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <EditText
-            android:id="@+id/et_create_swipe_distance"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:inputType="number"
-            android:text="300"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
             android:layout_marginBottom="24dp" />
@@ -397,55 +259,91 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="=== EDIT MODE (Read and Type Loop) ==="
+            android:text="=== EDIT BUY ORDER MODE ==="
             android:textColor="#ff8800"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
 
-        <!-- Edit Button on Row 1 -->
+        <!-- My Orders Tab -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Edit Button (X, Y) - On first row"
+            android:text="My Orders Tab (X%, Y%)"
             android:textColor="#ffaa00"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_edit_button_x"
+                android:id="@+id/et_my_orders_tab_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="950"
+                android:inputType="numberDecimal"
+                android:text="0.90"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_edit_button_y"
+                android:id="@+id/et_my_orders_tab_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="300"
+                android:inputType="numberDecimal"
+                android:text="0.13"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- Price Input Box -->
+        <!-- Edit Button -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Price Input Box (X, Y) - For text injection"
+            android:text="Edit Button (X%, Y%) - Always Row 1!"
+            android:textColor="#ffaa00"
+            android:textSize="14sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+            <EditText
+                android:id="@+id/et_edit_btn_x"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:text="0.85"
+                android:textColor="#ffffff"
+                android:background="#2a2a4e"
+                android:layout_marginEnd="8dp"
+                android:hint="X%"
+                android:textColorHint="#666666" />
+            <EditText
+                android:id="@+id/et_edit_btn_y"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:inputType="numberDecimal"
+                android:text="0.55"
+                android:textColor="#ffffff"
+                android:background="#2a2a4e"
+                android:hint="Y%"
+                android:textColorHint="#666666" />
+        </LinearLayout>
+
+        <!-- Price Field -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Price Field Location (X%, Y%)"
             android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <LinearLayout
@@ -454,35 +352,35 @@
             android:orientation="horizontal"
             android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_edit_price_input_x"
+                android:id="@+id/et_price_field_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="300"
+                android:inputType="numberDecimal"
+                android:text="0.50"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_edit_price_input_y"
+                android:id="@+id/et_price_field_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="400"
+                android:inputType="numberDecimal"
+                android:text="0.62"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- UPDATE Button - NEW FIELD -->
+        <!-- Update Button -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="UPDATE Button (X, Y) - UPDATE ORDER button"
+            android:text="Update Button (X%, Y%)"
             android:textColor="#00ff00"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -492,210 +390,115 @@
             android:orientation="horizontal"
             android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_edit_update_button_x"
+                android:id="@+id/et_update_btn_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
+                android:inputType="numberDecimal"
+                android:text="0.75"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_edit_update_button_y"
+                android:id="@+id/et_update_btn_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="550"
+                android:inputType="numberDecimal"
+                android:text="0.88"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- Confirm Yes Button - NEW FIELD -->
+        <!-- Close Button -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Confirm YES (X, Y) - Tap YES on confirmation"
-            android:textColor="#00ff00"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_edit_confirm_yes_x"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="X"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_edit_confirm_yes_y"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="600"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Y"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-
-        <!-- Close Button - NEW FIELD -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Close Button (X, Y) - For error popups"
+            android:text="Close Button (X%, Y%)"
             android:textColor="#ff6666"
             android:textSize="14sp" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="8dp">
             <EditText
-                android:id="@+id/et_edit_close_button_x"
+                android:id="@+id/et_close_btn_x"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="1000"
+                android:inputType="numberDecimal"
+                android:text="0.95"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
                 android:layout_marginEnd="8dp"
-                android:hint="X"
+                android:hint="X%"
                 android:textColorHint="#666666" />
             <EditText
-                android:id="@+id/et_edit_close_button_y"
+                android:id="@+id/et_close_btn_y"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:text="200"
+                android:inputType="numberDecimal"
+                android:text="0.10"
                 android:textColor="#ffffff"
                 android:background="#2a2a4e"
-                android:hint="Y"
+                android:hint="Y%"
                 android:textColorHint="#666666" />
         </LinearLayout>
 
-        <!-- Hard Price Cap -->
+        <!-- Max Orders & Price Cap -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Hard Price Cap (safety limit)"
+            android:text="Max Orders to Edit"
             android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_edit_hard_price_cap"
+            android:id="@+id/et_max_orders_edit"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:inputType="number"
+            android:text="20"
+            android:textColor="#ffffff"
+            android:background="#2a2a4e"
+            android:layout_marginBottom="8dp" />
+            
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hard Price Cap"
+            android:textColor="#ff6666"
+            android:textSize="14sp" />
+        <EditText
+            android:id="@+id/et_hard_price_cap_edit"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
             android:text="100000"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="8dp" />
 
-        <!-- Price Increment -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Price Increment (+1 over top price)"
+            android:text="Price Increment (+silver)"
             android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_edit_price_increment"
+            android:id="@+id/et_price_increment"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
             android:text="1"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
-            android:layout_marginBottom="12dp" />
-
-        <!-- OCR Region for EDIT Mode -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="OCR Region (Left, Top)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-            <EditText
-                android:id="@+id/et_edit_ocr_left"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="600"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="Left"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_edit_ocr_top"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="200"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Top"
-                android:textColorHint="#666666" />
-        </LinearLayout>
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="OCR Region (Right, Bottom)"
-            android:textColor="#aaaaaa"
-            android:textSize="14sp" />
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="24dp">
-            <EditText
-                android:id="@+id/et_edit_ocr_right"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="1050"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:layout_marginEnd="8dp"
-                android:hint="Right"
-                android:textColorHint="#666666" />
-            <EditText
-                android:id="@+id/et_edit_ocr_bottom"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:text="500"
-                android:textColor="#ffffff"
-                android:background="#2a2a4e"
-                android:hint="Bottom"
-                android:textColorHint="#666666" />
-        </LinearLayout>
+            android:layout_marginBottom="24dp" />
 
         <!-- ==================== TIMING SETTINGS ==================== -->
         <TextView
@@ -710,31 +513,63 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Loop Delay (ms) - Between operations"
+            android:text="Delay After Tap (ms)"
             android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_loop_delay"
+            android:id="@+id/et_delay_after_tap"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
-            android:text="200"
+            android:text="900"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginBottom="8dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Gesture Duration (ms) - Min 150ms for 3D games"
-            android:textColor="#ffaa00"
+            android:text="Delay After Swipe (ms)"
+            android:textColor="#aaaaaa"
             android:textSize="14sp" />
         <EditText
-            android:id="@+id/et_gesture_duration"
+            android:id="@+id/et_delay_after_swipe"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:inputType="number"
-            android:text="200"
+            android:text="1200"
+            android:textColor="#ffffff"
+            android:background="#2a2a4e"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Delay After Confirm (ms)"
+            android:textColor="#aaaaaa"
+            android:textSize="14sp" />
+        <EditText
+            android:id="@+id/et_delay_after_confirm"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:inputType="number"
+            android:text="1100"
+            android:textColor="#ffffff"
+            android:background="#2a2a4e"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cycle Cooldown (ms)"
+            android:textColor="#aaaaaa"
+            android:textSize="14sp" />
+        <EditText
+            android:id="@+id/et_cycle_cooldown"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:inputType="number"
+            android:text="500"
             android:textColor="#ffffff"
             android:background="#2a2a4e"
             android:layout_marginBottom="32dp" />
@@ -750,7 +585,7 @@
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
-                android:text="SAVE CONFIG"
+                android:text="💾 SAVE CONFIG"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:background="#00aa66"
@@ -761,7 +596,7 @@
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
-                android:text="RESET DEFAULTS"
+                android:text="🔄 RESET"
                 android:textSize="16sp"
                 android:background="#aa4400" />
         </LinearLayout>
