@@ -1,16 +1,10 @@
 package com.albion.marketassistant.db
 
-import com.albion.marketassistant.data.CalibrationData
-import com.albion.marketassistant.data.SessionHistory
-import com.albion.marketassistant.data.ItemCache
 import android.content.Context
 import androidx.room.*
 import com.albion.marketassistant.data.*
 import kotlinx.coroutines.flow.Flow
 
-/**
- * DAO for calibration data
- */
 @Dao
 interface CalibrationDao {
     @Query("SELECT * FROM calibration_data LIMIT 1")
@@ -26,9 +20,6 @@ interface CalibrationDao {
     suspend fun deleteAll()
 }
 
-/**
- * DAO for price history
- */
 @Dao
 interface PriceHistoryDao {
     @Query("SELECT * FROM price_history WHERE itemId = :itemId ORDER BY timestamp DESC LIMIT :limit")
@@ -50,9 +41,6 @@ interface PriceHistoryDao {
     suspend fun getCount(): Int
 }
 
-/**
- * DAO for session logs
- */
 @Dao
 interface SessionLogDao {
     @Query("SELECT * FROM session_logs ORDER BY sessionStart DESC")
@@ -71,9 +59,6 @@ interface SessionLogDao {
     suspend fun deleteOldSessions(beforeTimestamp: Long)
 }
 
-/**
- * Main Room Database
- */
 @Database(
     entities = [
         CalibrationData::class,
