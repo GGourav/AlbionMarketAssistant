@@ -1,10 +1,10 @@
-package com.albion.marketassistant.db
+package com.albion.marketaassistant.db
 
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.albion.marketassistant.data.ItemCache
+import com.albion.marketaassistant.data.ItemCache
 
 @Dao
 interface ItemCacheDao {
