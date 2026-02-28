@@ -1,5 +1,8 @@
 package com.albion.marketassistant.db
 
+import com.albion.marketassistant.data.CalibrationData
+import com.albion.marketassistant.data.SessionHistory
+import com.albion.marketassistant.data.ItemCache
 import android.content.Context
 import androidx.room.*
 import com.albion.marketassistant.data.*
