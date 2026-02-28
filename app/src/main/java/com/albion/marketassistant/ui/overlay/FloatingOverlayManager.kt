@@ -164,6 +164,13 @@ class FloatingOverlayManager(
         }
     }
 
+    fun updateProgress(processed: Int, total: Int) {
+        tvStats?.text = buildString {
+            append("Progress: $processed / $total\n")
+            append("Success: $processed")
+        }
+    }
+
     fun isVisible(): Boolean = overlayView != null
 
     fun hide() {
