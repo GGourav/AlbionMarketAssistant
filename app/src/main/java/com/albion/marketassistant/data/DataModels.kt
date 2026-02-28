@@ -4,7 +4,6 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import androidx.room.Embedded
-import androidx.room.Relation
 
 /**
  * Room Entity for storing calibration data
@@ -48,7 +47,7 @@ data class CalibrationData(
     val updateButtonX: Float = 0.75f,
     val updateButtonY: Float = 0.55f,
     
-    // OCR Region for EDIT mode (same as CREATE by default)
+    // OCR Region for EDIT mode
     val editOcrRegionLeft: Float = 0.55f,
     val editOcrRegionTop: Float = 0.22f,
     val editOcrRegionRight: Float = 0.75f,
@@ -65,6 +64,37 @@ data class CalibrationData(
     
     // Last updated timestamp
     val lastUpdated: Long = System.currentTimeMillis()
+)
+
+/**
+ * Room Entity for price history
+ */
+@Entity(tableName = "price_history")
+data class PriceHistoryEntry(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val itemId: String,
+    val itemName: String = "",
+    val price: Int,
+    val timestamp: Long = System.currentTimeMillis(),
+    val sessionId: Long = 0
+)
+
+/**
+ * Room Entity for session logs
+ */
+@Entity(tableName = "session_logs")
+data class SessionLogEntry(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val sessionStart: Long = System.currentTimeMillis(),
+    val sessionEnd: Long = 0,
+    val mode: String = "",
+    val itemsProcessed: Int = 0,
+    val totalProfit: Long = 0,
+    val averageCycleTime: Long = 0,
+    val errorCount: Int = 0,
+    val status: String = "RUNNING"
 )
 
 /**
@@ -194,7 +224,7 @@ enum class LogLevel {
 }
 
 /**
- * Room Entity for session history
+ * Session history (for compatibility)
  */
 @Entity(tableName = "session_history")
 data class SessionHistory(
@@ -209,7 +239,7 @@ data class SessionHistory(
 )
 
 /**
- * Room Entity for item cache
+ * Item cache
  */
 @Entity(tableName = "item_cache")
 data class ItemCache(
