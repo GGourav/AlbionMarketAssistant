@@ -232,6 +232,15 @@ data class SessionStatistics(
     val errorsEncountered: Int = 0,
     val consecutiveErrors: Int = 0,
     val lastPrice: Int? = null
+    fun getSessionDurationFormatted(): String {
+    val durationMs = System.currentTimeMillis() - sessionStartTime
+    val seconds = (durationMs / 1000) % 60
+    val minutes = (durationMs / (1000 * 60)) % 60
+    val hours = durationMs / (1000 * 60 * 60)
+    return when {
+        hours > 0 -> String.format("%dh %dm %ds", hours, minutes, seconds)
+        minutes > 0 -> String.format("%dm %ds", minutes, seconds)
+        else -> String.format("%ds", seconds)
 ) {
     fun getSuccessRate(): Float {
         val total = successfulOperations + failedOperations
