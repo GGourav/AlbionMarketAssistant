@@ -57,12 +57,10 @@ class MainActivity : AppCompatActivity() {
         switchDebugMode = findViewById(R.id.switchDebugMode)
         tvDebugStatus = findViewById(R.id.tvDebugStatus)
         
-        // Load saved debug mode
         val debugMode = sharedPreferences.getBoolean(AutomationForegroundService.PREF_DEBUG_MODE, false)
         switchDebugMode.isChecked = debugMode
         updateDebugStatus()
         
-        // Handle switch changes
         switchDebugMode.setOnCheckedChangeListener { _, isChecked ->
             sharedPreferences.edit()
                 .putBoolean(AutomationForegroundService.PREF_DEBUG_MODE, isChecked)
@@ -70,9 +68,9 @@ class MainActivity : AppCompatActivity() {
             updateDebugStatus()
             
             val msg = if (isChecked) {
-                "🐛 DEBUG MODE ON - Will process 1 item with step toasts"
+                "DEBUG MODE ON - Will process 1 item with step toasts"
             } else {
-                "🐛 DEBUG MODE OFF - Normal operation"
+                "DEBUG MODE OFF - Normal operation"
             }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
@@ -112,7 +110,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, CalibrationActivity::class.java))
         }
 
-        // Add button for requesting screen capture permission
         findViewById<Button>(R.id.btnRequestScreenCapture)?.setOnClickListener {
             requestMediaProjection()
         }
@@ -121,7 +118,6 @@ class MainActivity : AppCompatActivity() {
     private fun checkPermissions() {
         updatePermissionStatus()
         
-        // Request notification permission for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
                 != PackageManager.PERMISSION_GRANTED) {
@@ -137,18 +133,12 @@ class MainActivity : AppCompatActivity() {
     private fun updatePermissionStatus() {
         val isAccessibilityEnabled = MarketAccessibilityService.isServiceEnabled()
         val hasOverlayPermission = Settings.canDrawOverlays(this)
-        val hasNotificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == 
-                PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
 
         findViewById<TextView>(R.id.tvAccessibilityStatus).apply {
             text = if (isAccessibilityEnabled) {
-                "Accessibility: Enabled ✓"
+                "Accessibility: Enabled"
             } else {
-                "Accessibility: Disabled ✗"
+                "Accessibility: Disabled"
             }
             setTextColor(if (isAccessibilityEnabled) {
                 getColor(R.color.success)
@@ -159,9 +149,9 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.tvOverlayStatus).apply {
             text = if (hasOverlayPermission) {
-                "Overlay Permission: Granted ✓"
+                "Overlay Permission: Granted"
             } else {
-                "Overlay Permission: Required ✗"
+                "Overlay Permission: Required"
             }
             setTextColor(if (hasOverlayPermission) {
                 getColor(R.color.success)
@@ -170,13 +160,12 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // Update screen capture status
         findViewById<TextView>(R.id.tvScreenCaptureStatus)?.apply {
             val (resultCode, _) = MarketAccessibilityService.getMediaProjectionData()
             text = if (resultCode != 0) {
-                "Screen Capture: Granted ✓"
+                "Screen Capture: Granted"
             } else {
-                "Screen Capture: Required ✗"
+                "Screen Capture: Required"
             }
             setTextColor(if (resultCode != 0) {
                 getColor(R.color.success)
@@ -199,7 +188,6 @@ class MainActivity : AppCompatActivity() {
             return false
         }
 
-        // Check screen capture permission
         val (resultCode, _) = MarketAccessibilityService.getMediaProjectionData()
         if (resultCode == 0) {
             Toast.makeText(this, "Please grant Screen Capture permission for OCR", Toast.LENGTH_LONG).show()
@@ -286,7 +274,6 @@ class MainActivity : AppCompatActivity() {
             
             MEDIA_PROJECTION_REQUEST_CODE -> {
                 if (resultCode == Activity.RESULT_OK && data != null) {
-                    // Store the result for the AccessibilityService to use
                     MarketAccessibilityService.setMediaProjectionData(resultCode, data)
                     Toast.makeText(this, "Screen capture permission granted", Toast.LENGTH_SHORT).show()
                     updatePermissionStatus()
