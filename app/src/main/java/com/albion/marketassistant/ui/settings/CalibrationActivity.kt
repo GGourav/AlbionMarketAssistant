@@ -1,6 +1,3 @@
-// FILE: app/src/main/java/com/albion/marketassistant/ui/settings/CalibrationActivity.kt
-// COMPLETE REWRITE - Save directly to Room Database
-
 package com.albion.marketassistant.ui.settings
 
 import android.os.Bundle
@@ -8,286 +5,326 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.albion.marketassistant.R
-import com.albion.marketassistant.data.*
-import com.albion.marketassistant.db.CalibrationDatabase
+import com.albion.marketassistant.data.CalibrationData
+import com.albion.marketassistant.database.AppDatabase
+import com.albion.marketassistant.database.CalibrationDao
+import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
 
 class CalibrationActivity : AppCompatActivity() {
 
-    private lateinit var database: CalibrationDatabase
+    private lateinit var calibrationDao: CalibrationDao
     
-    // CREATE Mode inputs
-    private lateinit var etCreateRowStartX: EditText
-    private lateinit var etCreateRowStartY: EditText
-    private lateinit var etCreateRowHeight: EditText
-    private lateinit var etCreatePlusButtonX: EditText
-    private lateinit var etCreatePlusButtonY: EditText
+    // Tab layout
+    private lateinit var tabLayout: TabLayout
+    private lateinit var createModeLayout: LinearLayout
+    private lateinit var editModeLayout: LinearLayout
+    private lateinit var commonLayout: LinearLayout
+    
+    // CREATE mode EditTexts
+    private lateinit var etFirstRowX: EditText
+    private lateinit var etFirstRowY: EditText
+    private lateinit var etRowYOffset: EditText
+    private lateinit var etPlusButtonX: EditText
+    private lateinit var etPlusButtonY: EditText
     private lateinit var etCreateButtonX: EditText
     private lateinit var etCreateButtonY: EditText
-    private lateinit var etCreateConfirmYesX: EditText
-    private lateinit var etCreateConfirmYesY: EditText
-    private lateinit var etCreateCloseButtonX: EditText
-    private lateinit var etCreateCloseButtonY: EditText
-    private lateinit var etCreateHardPriceCap: EditText
-    private lateinit var etCreateMaxRows: EditText
-    private lateinit var etCreateOcrLeft: EditText
-    private lateinit var etCreateOcrTop: EditText
-    private lateinit var etCreateOcrRight: EditText
-    private lateinit var etCreateOcrBottom: EditText
-    private lateinit var etCreateSwipeX: EditText
-    private lateinit var etCreateSwipeY: EditText
-    private lateinit var etCreateSwipeDistance: EditText
+    private lateinit var etConfirmYesX: EditText
+    private lateinit var etConfirmYesY: EditText
+    private lateinit var etCloseButtonX: EditText
+    private lateinit var etCloseButtonY: EditText
     
-    // EDIT Mode inputs
+    // CREATE mode OCR
+    private lateinit var etOcrLeft: EditText
+    private lateinit var etOcrTop: EditText
+    private lateinit var etOcrRight: EditText
+    private lateinit var etOcrBottom: EditText
+    
+    // CREATE mode Swipe
+    private lateinit var etSwipeX: EditText
+    private lateinit var etSwipeY: EditText
+    private lateinit var etSwipeDistance: EditText
+    
+    // EDIT mode EditTexts
     private lateinit var etEditButtonX: EditText
     private lateinit var etEditButtonY: EditText
-    private lateinit var etEditPriceInputX: EditText
-    private lateinit var etEditPriceInputY: EditText
-    private lateinit var etEditUpdateButtonX: EditText
-    private lateinit var etEditUpdateButtonY: EditText
+    private lateinit var etPriceInputX: EditText
+    private lateinit var etPriceInputY: EditText
+    private lateinit var etUpdateButtonX: EditText
+    private lateinit var etUpdateButtonY: EditText
     private lateinit var etEditConfirmYesX: EditText
     private lateinit var etEditConfirmYesY: EditText
     private lateinit var etEditCloseButtonX: EditText
     private lateinit var etEditCloseButtonY: EditText
-    private lateinit var etEditHardPriceCap: EditText
-    private lateinit var etEditPriceIncrement: EditText
+    
+    // EDIT mode OCR
     private lateinit var etEditOcrLeft: EditText
     private lateinit var etEditOcrTop: EditText
     private lateinit var etEditOcrRight: EditText
     private lateinit var etEditOcrBottom: EditText
     
-    // Global timing settings
+    // Common settings
+    private lateinit var etHardPriceCap: EditText
+    private lateinit var etMaxRows: EditText
+    private lateinit var etPriceIncrement: EditText
     private lateinit var etLoopDelay: EditText
     private lateinit var etGestureDuration: EditText
+    
+    // Buttons
+    private lateinit var btnSave: Button
+    private lateinit var btnReset: Button
+    private lateinit var btnBack: Button
+    
+    private var currentData: CalibrationData = CalibrationData()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
         
-        database = CalibrationDatabase.getInstance(applicationContext)
+        calibrationDao = AppDatabase.getInstance(this).calibrationDao()
         
         initViews()
-        loadConfig()
-        setupButtons()
+        setupTabs()
+        setupClickListeners()
+        loadCalibrationData()
     }
-
+    
     private fun initViews() {
-        // CREATE Mode
-        etCreateRowStartX = findViewById(R.id.et_create_row_start_x)
-        etCreateRowStartY = findViewById(R.id.et_create_row_start_y)
-        etCreateRowHeight = findViewById(R.id.et_create_row_height)
-        etCreatePlusButtonX = findViewById(R.id.et_create_plus_button_x)
-        etCreatePlusButtonY = findViewById(R.id.et_create_plus_button_y)
+        // Tab layout and containers
+        tabLayout = findViewById(R.id.tab_layout)
+        createModeLayout = findViewById(R.id.layout_create_mode)
+        editModeLayout = findViewById(R.id.layout_edit_mode)
+        commonLayout = findViewById(R.id.layout_common)
+        
+        // CREATE mode coordinates
+        etFirstRowX = findViewById(R.id.et_first_row_x)
+        etFirstRowY = findViewById(R.id.et_first_row_y)
+        etRowYOffset = findViewById(R.id.et_row_y_offset)
+        etPlusButtonX = findViewById(R.id.et_plus_button_x)
+        etPlusButtonY = findViewById(R.id.et_plus_button_y)
         etCreateButtonX = findViewById(R.id.et_create_button_x)
         etCreateButtonY = findViewById(R.id.et_create_button_y)
-        etCreateConfirmYesX = findViewById(R.id.et_create_confirm_yes_x)
-        etCreateConfirmYesY = findViewById(R.id.et_create_confirm_yes_y)
-        etCreateCloseButtonX = findViewById(R.id.et_create_close_button_x)
-        etCreateCloseButtonY = findViewById(R.id.et_create_close_button_y)
-        etCreateHardPriceCap = findViewById(R.id.et_create_hard_price_cap)
-        etCreateMaxRows = findViewById(R.id.et_create_max_rows)
-        etCreateOcrLeft = findViewById(R.id.et_create_ocr_left)
-        etCreateOcrTop = findViewById(R.id.et_create_ocr_top)
-        etCreateOcrRight = findViewById(R.id.et_create_ocr_right)
-        etCreateOcrBottom = findViewById(R.id.et_create_ocr_bottom)
-        etCreateSwipeX = findViewById(R.id.et_create_swipe_x)
-        etCreateSwipeY = findViewById(R.id.et_create_swipe_y)
-        etCreateSwipeDistance = findViewById(R.id.et_create_swipe_distance)
+        etConfirmYesX = findViewById(R.id.et_confirm_yes_x)
+        etConfirmYesY = findViewById(R.id.et_confirm_yes_y)
+        etCloseButtonX = findViewById(R.id.et_close_button_x)
+        etCloseButtonY = findViewById(R.id.et_close_button_y)
         
-        // EDIT Mode
+        // CREATE mode OCR
+        etOcrLeft = findViewById(R.id.et_ocr_left)
+        etOcrTop = findViewById(R.id.et_ocr_top)
+        etOcrRight = findViewById(R.id.et_ocr_right)
+        etOcrBottom = findViewById(R.id.et_ocr_bottom)
+        
+        // CREATE mode Swipe
+        etSwipeX = findViewById(R.id.et_swipe_x)
+        etSwipeY = findViewById(R.id.et_swipe_y)
+        etSwipeDistance = findViewById(R.id.et_swipe_distance)
+        
+        // EDIT mode coordinates
         etEditButtonX = findViewById(R.id.et_edit_button_x)
         etEditButtonY = findViewById(R.id.et_edit_button_y)
-        etEditPriceInputX = findViewById(R.id.et_edit_price_input_x)
-        etEditPriceInputY = findViewById(R.id.et_edit_price_input_y)
-        etEditUpdateButtonX = findViewById(R.id.et_edit_update_button_x)
-        etEditUpdateButtonY = findViewById(R.id.et_edit_update_button_y)
+        etPriceInputX = findViewById(R.id.et_price_input_x)
+        etPriceInputY = findViewById(R.id.et_price_input_y)
+        etUpdateButtonX = findViewById(R.id.et_update_button_x)
+        etUpdateButtonY = findViewById(R.id.et_update_button_y)
         etEditConfirmYesX = findViewById(R.id.et_edit_confirm_yes_x)
         etEditConfirmYesY = findViewById(R.id.et_edit_confirm_yes_y)
         etEditCloseButtonX = findViewById(R.id.et_edit_close_button_x)
         etEditCloseButtonY = findViewById(R.id.et_edit_close_button_y)
-        etEditHardPriceCap = findViewById(R.id.et_edit_hard_price_cap)
-        etEditPriceIncrement = findViewById(R.id.et_edit_price_increment)
+        
+        // EDIT mode OCR
         etEditOcrLeft = findViewById(R.id.et_edit_ocr_left)
         etEditOcrTop = findViewById(R.id.et_edit_ocr_top)
         etEditOcrRight = findViewById(R.id.et_edit_ocr_right)
         etEditOcrBottom = findViewById(R.id.et_edit_ocr_bottom)
         
-        // Global
+        // Common settings
+        etHardPriceCap = findViewById(R.id.et_hard_price_cap)
+        etMaxRows = findViewById(R.id.et_max_rows)
+        etPriceIncrement = findViewById(R.id.et_price_increment)
         etLoopDelay = findViewById(R.id.et_loop_delay)
         etGestureDuration = findViewById(R.id.et_gesture_duration)
+        
+        // Buttons
+        btnSave = findViewById(R.id.btn_save)
+        btnReset = findViewById(R.id.btn_reset)
+        btnBack = findViewById(R.id.btn_back)
     }
-
-    private fun loadConfig() {
-        lifecycleScope.launch {
-            val calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
+    
+    private fun setupTabs() {
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    0 -> {
+                        createModeLayout.visibility = android.view.View.VISIBLE
+                        editModeLayout.visibility = android.view.View.GONE
+                    }
+                    1 -> {
+                        createModeLayout.visibility = android.view.View.GONE
+                        editModeLayout.visibility = android.view.View.VISIBLE
+                    }
+                }
+            }
             
-            // CREATE Mode
-            etCreateRowStartX.setText(calibration.createMode.firstRowX.toString())
-            etCreateRowStartY.setText(calibration.createMode.firstRowY.toString())
-            etCreateRowHeight.setText(calibration.createMode.rowYOffset.toString())
-            etCreatePlusButtonX.setText(calibration.createMode.plusButtonX.toString())
-            etCreatePlusButtonY.setText(calibration.createMode.plusButtonY.toString())
-            etCreateButtonX.setText(calibration.createMode.createButtonX.toString())
-            etCreateButtonY.setText(calibration.createMode.createButtonY.toString())
-            etCreateConfirmYesX.setText(calibration.createMode.confirmYesX.toString())
-            etCreateConfirmYesY.setText(calibration.createMode.confirmYesY.toString())
-            etCreateCloseButtonX.setText(calibration.createMode.closeButtonX.toString())
-            etCreateCloseButtonY.setText(calibration.createMode.closeButtonY.toString())
-            etCreateHardPriceCap.setText(calibration.createMode.hardPriceCap.toString())
-            etCreateMaxRows.setText(calibration.createMode.maxRowsPerScreen.toString())
-            etCreateOcrLeft.setText(calibration.createMode.ocrRegionLeft.toString())
-            etCreateOcrTop.setText(calibration.createMode.ocrRegionTop.toString())
-            etCreateOcrRight.setText(calibration.createMode.ocrRegionRight.toString())
-            etCreateOcrBottom.setText(calibration.createMode.ocrRegionBottom.toString())
-            etCreateSwipeX.setText(calibration.global.swipeStartX.toString())
-            etCreateSwipeY.setText(calibration.global.swipeStartY.toString())
-            etCreateSwipeDistance.setText((calibration.global.swipeStartY - calibration.global.swipeEndY).toString())
-            
-            // EDIT Mode
-            etEditButtonX.setText(calibration.editMode.editButtonX.toString())
-            etEditButtonY.setText(calibration.editMode.editButtonY.toString())
-            etEditPriceInputX.setText(calibration.editMode.priceInputX.toString())
-            etEditPriceInputY.setText(calibration.editMode.priceInputY.toString())
-            etEditUpdateButtonX.setText(calibration.editMode.updateButtonX.toString())
-            etEditUpdateButtonY.setText(calibration.editMode.updateButtonY.toString())
-            etEditConfirmYesX.setText(calibration.editMode.confirmYesX.toString())
-            etEditConfirmYesY.setText(calibration.editMode.confirmYesY.toString())
-            etEditCloseButtonX.setText(calibration.editMode.closeButtonX.toString())
-            etEditCloseButtonY.setText(calibration.editMode.closeButtonY.toString())
-            etEditHardPriceCap.setText(calibration.editMode.hardPriceCap.toString())
-            etEditPriceIncrement.setText(calibration.editMode.priceIncrement.toString())
-            etEditOcrLeft.setText(calibration.editMode.ocrRegionLeft.toString())
-            etEditOcrTop.setText(calibration.editMode.ocrRegionTop.toString())
-            etEditOcrRight.setText(calibration.editMode.ocrRegionRight.toString())
-            etEditOcrBottom.setText(calibration.editMode.ocrRegionBottom.toString())
-            
-            // Global
-            etLoopDelay.setText(calibration.global.cycleCooldownMs.toString())
-            etGestureDuration.setText(calibration.global.tapDurationMs.toString())
-        }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
     }
-
-    private fun setupButtons() {
-        findViewById<Button>(R.id.btn_save_config).setOnClickListener {
-            saveConfig()
+    
+    private fun setupClickListeners() {
+        btnSave.setOnClickListener {
+            saveCalibrationData()
         }
         
-        findViewById<Button>(R.id.btn_reset_config).setOnClickListener {
+        btnReset.setOnClickListener {
             resetToDefaults()
         }
+        
+        btnBack.setOnClickListener {
+            finish()
+        }
     }
-
-    private fun saveConfig() {
+    
+    private fun loadCalibrationData() {
         lifecycleScope.launch {
             try {
-                val swipeX = etCreateSwipeX.text.toString().toIntOrNull() ?: 540
-                val swipeY = etCreateSwipeY.text.toString().toIntOrNull() ?: 1500
-                val swipeDistance = etCreateSwipeDistance.text.toString().toIntOrNull() ?: 300
-                
-                val calibration = CalibrationData(
-                    createMode = CreateModeConfig(
-                        firstRowX = etCreateRowStartX.text.toString().toIntOrNull() ?: 100,
-                        firstRowY = etCreateRowStartY.text.toString().toIntOrNull() ?: 300,
-                        rowYOffset = etCreateRowHeight.text.toString().toIntOrNull() ?: 80,
-                        plusButtonX = etCreatePlusButtonX.text.toString().toIntOrNull() ?: 350,
-                        plusButtonY = etCreatePlusButtonY.text.toString().toIntOrNull() ?: 450,
-                        createButtonX = etCreateButtonX.text.toString().toIntOrNull() ?: 500,
-                        createButtonY = etCreateButtonY.text.toString().toIntOrNull() ?: 550,
-                        confirmYesX = etCreateConfirmYesX.text.toString().toIntOrNull() ?: 500,
-                        confirmYesY = etCreateConfirmYesY.text.toString().toIntOrNull() ?: 600,
-                        closeButtonX = etCreateCloseButtonX.text.toString().toIntOrNull() ?: 1000,
-                        closeButtonY = etCreateCloseButtonY.text.toString().toIntOrNull() ?: 200,
-                        hardPriceCap = etCreateHardPriceCap.text.toString().toIntOrNull() ?: 100000,
-                        maxRowsPerScreen = etCreateMaxRows.text.toString().toIntOrNull() ?: 5,
-                        ocrRegionLeft = etCreateOcrLeft.text.toString().toIntOrNull() ?: 600,
-                        ocrRegionTop = etCreateOcrTop.text.toString().toIntOrNull() ?: 200,
-                        ocrRegionRight = etCreateOcrRight.text.toString().toIntOrNull() ?: 1050,
-                        ocrRegionBottom = etCreateOcrBottom.text.toString().toIntOrNull() ?: 500
-                    ),
-                    editMode = EditModeConfig(
-                        editButtonX = etEditButtonX.text.toString().toIntOrNull() ?: 950,
-                        editButtonY = etEditButtonY.text.toString().toIntOrNull() ?: 300,
-                        priceInputX = etEditPriceInputX.text.toString().toIntOrNull() ?: 300,
-                        priceInputY = etEditPriceInputY.text.toString().toIntOrNull() ?: 400,
-                        updateButtonX = etEditUpdateButtonX.text.toString().toIntOrNull() ?: 500,
-                        updateButtonY = etEditUpdateButtonY.text.toString().toIntOrNull() ?: 550,
-                        confirmYesX = etEditConfirmYesX.text.toString().toIntOrNull() ?: 500,
-                        confirmYesY = etEditConfirmYesY.text.toString().toIntOrNull() ?: 600,
-                        closeButtonX = etEditCloseButtonX.text.toString().toIntOrNull() ?: 1000,
-                        closeButtonY = etEditCloseButtonY.text.toString().toIntOrNull() ?: 200,
-                        hardPriceCap = etEditHardPriceCap.text.toString().toIntOrNull() ?: 100000,
-                        priceIncrement = etEditPriceIncrement.text.toString().toIntOrNull() ?: 1,
-                        ocrRegionLeft = etEditOcrLeft.text.toString().toIntOrNull() ?: 600,
-                        ocrRegionTop = etEditOcrTop.text.toString().toIntOrNull() ?: 200,
-                        ocrRegionRight = etEditOcrRight.text.toString().toIntOrNull() ?: 1050,
-                        ocrRegionBottom = etEditOcrBottom.text.toString().toIntOrNull() ?: 500
-                    ),
-                    global = GlobalSettings(
-                        swipeStartX = swipeX,
-                        swipeStartY = swipeY,
-                        swipeEndX = swipeX,
-                        swipeEndY = swipeY - swipeDistance,
-                        cycleCooldownMs = etLoopDelay.text.toString().toLongOrNull() ?: 200,
-                        tapDurationMs = etGestureDuration.text.toString().toLongOrNull() ?: 200
-                    )
-                )
-                
-                database.calibrationDao().insertCalibration(calibration)
-                
-                Toast.makeText(this@CalibrationActivity, "✓ Configuration saved to database!", Toast.LENGTH_SHORT).show()
-                finish()
-                
+                val data = calibrationDao.getLatest()
+                if (data != null) {
+                    currentData = data
+                    populateFields(data)
+                } else {
+                    populateFields(CalibrationData())
+                }
             } catch (e: Exception) {
-                Toast.makeText(this@CalibrationActivity, "Error saving config: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@CalibrationActivity, "Error loading data: ${e.message}", Toast.LENGTH_SHORT).show()
+                populateFields(CalibrationData())
             }
         }
     }
-
+    
+    private fun populateFields(data: CalibrationData) {
+        // CREATE mode
+        etFirstRowX.setText(String.format("%.3f", data.firstRowX))
+        etFirstRowY.setText(String.format("%.3f", data.firstRowY))
+        etRowYOffset.setText(String.format("%.3f", data.rowYOffset))
+        etPlusButtonX.setText(String.format("%.3f", data.plusButtonX))
+        etPlusButtonY.setText(String.format("%.3f", data.plusButtonY))
+        etCreateButtonX.setText(String.format("%.3f", data.createButtonX))
+        etCreateButtonY.setText(String.format("%.3f", data.createButtonY))
+        etConfirmYesX.setText(String.format("%.3f", data.confirmYesX))
+        etConfirmYesY.setText(String.format("%.3f", data.confirmYesY))
+        etCloseButtonX.setText(String.format("%.3f", data.closeButtonX))
+        etCloseButtonY.setText(String.format("%.3f", data.closeButtonY))
+        
+        // CREATE OCR
+        etOcrLeft.setText(String.format("%.3f", data.ocrRegionLeft))
+        etOcrTop.setText(String.format("%.3f", data.ocrRegionTop))
+        etOcrRight.setText(String.format("%.3f", data.ocrRegionRight))
+        etOcrBottom.setText(String.format("%.3f", data.ocrRegionBottom))
+        
+        // CREATE Swipe
+        etSwipeX.setText(String.format("%.3f", data.swipeStartX))
+        etSwipeY.setText(String.format("%.3f", data.swipeStartY))
+        etSwipeDistance.setText(String.format("%.3f", data.swipeStartY - data.swipeEndY))
+        
+        // EDIT mode
+        etEditButtonX.setText(String.format("%.3f", data.editButtonX))
+        etEditButtonY.setText(String.format("%.3f", data.editButtonY))
+        etPriceInputX.setText(String.format("%.3f", data.priceInputX))
+        etPriceInputY.setText(String.format("%.3f", data.priceInputY))
+        etUpdateButtonX.setText(String.format("%.3f", data.updateButtonX))
+        etUpdateButtonY.setText(String.format("%.3f", data.updateButtonY))
+        etEditConfirmYesX.setText(String.format("%.3f", data.confirmYesX))
+        etEditConfirmYesY.setText(String.format("%.3f", data.confirmYesY))
+        etEditCloseButtonX.setText(String.format("%.3f", data.closeButtonX))
+        etEditCloseButtonY.setText(String.format("%.3f", data.closeButtonY))
+        
+        // EDIT OCR
+        etEditOcrLeft.setText(String.format("%.3f", data.editOcrRegionLeft))
+        etEditOcrTop.setText(String.format("%.3f", data.editOcrRegionTop))
+        etEditOcrRight.setText(String.format("%.3f", data.editOcrRegionRight))
+        etEditOcrBottom.setText(String.format("%.3f", data.editOcrRegionBottom))
+        
+        // Common
+        etHardPriceCap.setText(data.hardPriceCap.toString())
+        etMaxRows.setText(data.maxRows.toString())
+        etPriceIncrement.setText(data.priceIncrement.toString())
+        etLoopDelay.setText(data.loopDelayMs.toString())
+        etGestureDuration.setText(data.gestureDurationMs.toString())
+    }
+    
+    private fun saveCalibrationData() {
+        try {
+            val swipeDistance = etSwipeDistance.text.toString().toFloatOrNull() ?: 0.35f
+            
+            val data = CalibrationData(
+                id = currentData.id,
+                
+                // CREATE mode
+                firstRowX = etFirstRowX.text.toString().toFloatOrNull() ?: 0.5f,
+                firstRowY = etFirstRowY.text.toString().toFloatOrNull() ?: 0.25f,
+                rowYOffset = etRowYOffset.text.toString().toFloatOrNull() ?: 0.08f,
+                plusButtonX = etPlusButtonX.text.toString().toFloatOrNull() ?: 0.85f,
+                plusButtonY = etPlusButtonY.text.toString().toFloatOrNull() ?: 0.25f,
+                createButtonX = etCreateButtonX.text.toString().toFloatOrNull() ?: 0.5f,
+                createButtonY = etCreateButtonY.text.toString().toFloatOrNull() ?: 0.9f,
+                confirmYesX = etConfirmYesX.text.toString().toFloatOrNull() ?: 0.35f,
+                confirmYesY = etConfirmYesY.text.toString().toFloatOrNull() ?: 0.55f,
+                closeButtonX = etCloseButtonX.text.toString().toFloatOrNull() ?: 0.85f,
+                closeButtonY = etCloseButtonY.text.toString().toFloatOrNull() ?: 0.15f,
+                
+                // CREATE OCR
+                ocrRegionLeft = etOcrLeft.text.toString().toFloatOrNull() ?: 0.55f,
+                ocrRegionTop = etOcrTop.text.toString().toFloatOrNull() ?: 0.22f,
+                ocrRegionRight = etOcrRight.text.toString().toFloatOrNull() ?: 0.75f,
+                ocrRegionBottom = etOcrBottom.text.toString().toFloatOrNull() ?: 0.28f,
+                
+                // CREATE Swipe
+                swipeStartX = etSwipeX.text.toString().toFloatOrNull() ?: 0.5f,
+                swipeStartY = etSwipeY.text.toString().toFloatOrNull() ?: 0.7f,
+                swipeEndX = etSwipeX.text.toString().toFloatOrNull() ?: 0.5f,
+                swipeEndY = (etSwipeY.text.toString().toFloatOrNull() ?: 0.7f) - swipeDistance,
+                
+                // EDIT mode
+                editButtonX = etEditButtonX.text.toString().toFloatOrNull() ?: 0.85f,
+                editButtonY = etEditButtonY.text.toString().toFloatOrNull() ?: 0.25f,
+                priceInputX = etPriceInputX.text.toString().toFloatOrNull() ?: 0.5f,
+                priceInputY = etPriceInputY.text.toString().toFloatOrNull() ?: 0.45f,
+                updateButtonX = etUpdateButtonX.text.toString().toFloatOrNull() ?: 0.75f,
+                updateButtonY = etUpdateButtonY.text.toString().toFloatOrNull() ?: 0.55f,
+                
+                // EDIT OCR
+                editOcrRegionLeft = etEditOcrLeft.text.toString().toFloatOrNull() ?: 0.55f,
+                editOcrRegionTop = etEditOcrTop.text.toString().toFloatOrNull() ?: 0.22f,
+                editOcrRegionRight = etEditOcrRight.text.toString().toFloatOrNull() ?: 0.75f,
+                editOcrRegionBottom = etEditOcrBottom.text.toString().toFloatOrNull() ?: 0.28f,
+                
+                // Common
+                hardPriceCap = etHardPriceCap.text.toString().toIntOrNull() ?: 50000,
+                maxRows = etMaxRows.text.toString().toIntOrNull() ?: 5,
+                priceIncrement = etPriceIncrement.text.toString().toIntOrNull() ?: 100,
+                loopDelayMs = etLoopDelay.text.toString().toLongOrNull() ?: 500,
+                gestureDurationMs = etGestureDuration.text.toString().toLongOrNull() ?: 200,
+                
+                lastUpdated = System.currentTimeMillis()
+            )
+            
+            lifecycleScope.launch {
+                try {
+                    calibrationDao.insert(data)
+                    currentData = data
+                    Toast.makeText(this@CalibrationActivity, "Calibration saved!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@CalibrationActivity, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Invalid input: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
     private fun resetToDefaults() {
-        // CREATE Mode defaults
-        etCreateRowStartX.setText("100")
-        etCreateRowStartY.setText("300")
-        etCreateRowHeight.setText("80")
-        etCreatePlusButtonX.setText("350")
-        etCreatePlusButtonY.setText("450")
-        etCreateButtonX.setText("500")
-        etCreateButtonY.setText("550")
-        etCreateConfirmYesX.setText("500")
-        etCreateConfirmYesY.setText("600")
-        etCreateCloseButtonX.setText("1000")
-        etCreateCloseButtonY.setText("200")
-        etCreateHardPriceCap.setText("100000")
-        etCreateMaxRows.setText("5")
-        etCreateOcrLeft.setText("600")
-        etCreateOcrTop.setText("200")
-        etCreateOcrRight.setText("1050")
-        etCreateOcrBottom.setText("500")
-        etCreateSwipeX.setText("540")
-        etCreateSwipeY.setText("1500")
-        etCreateSwipeDistance.setText("300")
-        
-        // EDIT Mode defaults
-        etEditButtonX.setText("950")
-        etEditButtonY.setText("300")
-        etEditPriceInputX.setText("300")
-        etEditPriceInputY.setText("400")
-        etEditUpdateButtonX.setText("500")
-        etEditUpdateButtonY.setText("550")
-        etEditConfirmYesX.setText("500")
-        etEditConfirmYesY.setText("600")
-        etEditCloseButtonX.setText("1000")
-        etEditCloseButtonY.setText("200")
-        etEditHardPriceCap.setText("100000")
-        etEditPriceIncrement.setText("1")
-        etEditOcrLeft.setText("600")
-        etEditOcrTop.setText("200")
-        etEditOcrRight.setText("1050")
-        etEditOcrBottom.setText("500")
-        
-        // Global defaults
-        etLoopDelay.setText("200")
-        etGestureDuration.setText("200")
-        
+        populateFields(CalibrationData())
         Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
     }
 }
