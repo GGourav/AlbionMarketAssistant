@@ -17,9 +17,6 @@ import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * Manages session statistics and history tracking
- */
 class StatisticsManager(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -53,9 +50,6 @@ class StatisticsManager(private val context: Context) {
         val averageCycleTimeMs: Long = 0
     )
     
-    /**
-     * Start a new session
-     */
     fun startSession() {
         sessionStartTime = System.currentTimeMillis()
         lastCycleTime = sessionStartTime
@@ -75,9 +69,6 @@ class StatisticsManager(private val context: Context) {
         log(LogLevel.INFO, "StatisticsManager", "Session started")
     }
     
-    /**
-     * Record a price update
-     */
     fun recordPriceUpdate(profitSilver: Long = 0) {
         val currentTime = System.currentTimeMillis()
         val cycleTime = currentTime - lastCycleTime
@@ -100,9 +91,6 @@ class StatisticsManager(private val context: Context) {
         log(LogLevel.INFO, "StatisticsManager", "Price update #${totalUpdates}, profit: +${profitSilver} silver")
     }
     
-    /**
-     * Update the current state
-     */
     fun updateState(stateName: String) {
         val current = _currentSession.value
         _currentSession.value = current.copy(
@@ -111,9 +99,6 @@ class StatisticsManager(private val context: Context) {
         )
     }
     
-    /**
-     * Record time saved
-     */
     fun recordTimeSaved(timeMs: Long) {
         val current = _currentSession.value
         _currentSession.value = current.copy(
@@ -121,9 +106,6 @@ class StatisticsManager(private val context: Context) {
         )
     }
     
-    /**
-     * End the current session
-     */
     fun endSession() {
         val session = _currentSession.value
         val endTime = System.currentTimeMillis()
@@ -139,8 +121,6 @@ class StatisticsManager(private val context: Context) {
                     averageCycleTime = session.averageCycleTimeMs
                 )
                 sessionHistoryDao.insert(history)
-                
-                // Update total statistics
                 updateTotalStatistics()
             } catch (e: Exception) {
                 log(LogLevel.ERROR, "StatisticsManager", "Failed to save session: ${e.message}")
@@ -150,9 +130,6 @@ class StatisticsManager(private val context: Context) {
         log(LogLevel.INFO, "StatisticsManager", "Session ended. Items: ${session.priceUpdates}, Profit: ${session.estimatedProfitSilver}")
     }
     
-    /**
-     * Log an entry
-     */
     fun log(level: LogLevel, tag: String, message: String) {
         val entry = LogEntry(
             timestamp = System.currentTimeMillis(),
@@ -164,7 +141,6 @@ class StatisticsManager(private val context: Context) {
         val currentLogs = _logEntries.value.toMutableList()
         currentLogs.add(entry)
         
-        // Keep only last 500 entries
         if (currentLogs.size > 500) {
             currentLogs.removeAt(0)
         }
@@ -172,16 +148,10 @@ class StatisticsManager(private val context: Context) {
         _logEntries.value = currentLogs
     }
     
-    /**
-     * Get formatted session duration
-     */
     fun getSessionDuration(): String {
         return _currentSession.value.getSessionDurationFormatted()
     }
     
-    /**
-     * Get formatted time
-     */
     fun formatDuration(ms: Long): String {
         val hours = ms / 3600000
         val minutes = (ms % 3600000) / 60000
@@ -189,17 +159,11 @@ class StatisticsManager(private val context: Context) {
         return String.format("%02d:%02d:%02d", hours, minutes, seconds)
     }
     
-    /**
-     * Get formatted timestamp
-     */
     fun formatTimestamp(timestamp: Long): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         return sdf.format(Date(timestamp))
     }
     
-    /**
-     * Update item cache
-     */
     fun updateItemCache(itemName: String, price: Int, category: String = "") {
         scope.launch {
             try {
@@ -216,9 +180,6 @@ class StatisticsManager(private val context: Context) {
         }
     }
     
-    /**
-     * Get cached item price
-     */
     suspend fun getCachedItemPrice(itemName: String): Int? {
         return try {
             itemCacheDao.getPrice(itemName)
@@ -227,9 +188,6 @@ class StatisticsManager(private val context: Context) {
         }
     }
     
-    /**
-     * Load total statistics from history
-     */
     private suspend fun updateTotalStatistics() {
         try {
             val sessions = sessionHistoryDao.getAllSessions()
@@ -250,18 +208,12 @@ class StatisticsManager(private val context: Context) {
         }
     }
     
-    /**
-     * Load statistics on init
-     */
     init {
         scope.launch {
             updateTotalStatistics()
         }
     }
     
-    /**
-     * Clear all history
-     */
     fun clearHistory() {
         scope.launch {
             try {
@@ -276,9 +228,6 @@ class StatisticsManager(private val context: Context) {
         }
     }
     
-    /**
-     * Export statistics to string
-     */
     fun exportStatistics(): String {
         val session = _currentSession.value
         val total = _totalStats.value
@@ -298,9 +247,6 @@ class StatisticsManager(private val context: Context) {
         }
     }
     
-    /**
-     * Cleanup
-     */
     fun cleanup() {
         scope.cancel()
     }
