@@ -66,7 +66,6 @@ class MainActivity : AppCompatActivity() {
         cardStatus = findViewById(R.id.card_status)
         switchDebugMode = findViewById(R.id.switch_debug_mode)
         
-        // Load debug mode preference
         switchDebugMode.isChecked = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
     }
     
@@ -190,7 +189,6 @@ class MainActivity : AppCompatActivity() {
         btnEditBuyOrder.alpha = if (isRunning) 0.5f else 1.0f
         btnStop.alpha = if (isRunning) 1.0f else 0.5f
         
-        // Update status card color
         if (isRunning) {
             cardStatus.setCardBackgroundColor(ContextCompat.getColor(this, R.color.status_running))
         } else {
