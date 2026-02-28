@@ -1,215 +1,238 @@
 package com.albion.marketassistant.util
 
-import android.graphics.Path
-import com.albion.marketassistant.data.AntiDetectionSettings
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
+import com.albion.marketassistant.data.RandomizationSettings
 import kotlin.random.Random
 
 /**
- * Helper class for anti-detection randomization
- * Provides methods to randomize timing, gestures, and patterns
+ * Helper class for randomizing gestures and delays to avoid detection
  */
-class RandomizationHelper(private val settings: AntiDetectionSettings) {
-
-    private val random = Random(System.currentTimeMillis())
-
+object RandomizationHelper {
+    
+    private var settings: RandomizationSettings = RandomizationSettings()
+    
     /**
-     * Get randomized delay based on base delay
-     * Returns baseDelay ± randomDelayRange
+     * Initialize with custom settings
      */
-    fun getRandomizedDelay(baseDelay: Long): Long {
-        if (!settings.enableRandomization) return baseDelay
-
-        val range = settings.randomDelayRangeMs
-        val randomOffset = random.nextLong(-range, range + 1)
-        val result = baseDelay + randomOffset
-
-        // Ensure minimum delay
-        return result.coerceAtLeast(settings.minRandomDelayMs)
+    fun initialize(newSettings: RandomizationSettings) {
+        settings = newSettings
     }
-
+    
     /**
-     * Get randomized delay within a range
+     * Get current settings
+     */
+    fun getSettings(): RandomizationSettings = settings
+    
+    /**
+     * Generate a random delay between min and max
+     */
+    fun getRandomDelay(): Long {
+        return Random.nextLong(settings.minRandomDelayMs, settings.maxRandomDelayMs + 1)
+    }
+    
+    /**
+     * Generate a random delay within a custom range
      */
     fun getRandomDelay(minMs: Long, maxMs: Long): Long {
-        if (!settings.enableRandomization) return (minMs + maxMs) / 2
-        return random.nextLong(minMs, maxMs + 1)
+        return Random.nextLong(minMs, maxMs + 1)
     }
-
+    
     /**
-     * Get randomized swipe distance
-     * Returns original distance ± percentage
+     * Apply randomization to swipe distance
      */
-    fun getRandomizedSwipeDistance(originalDistance: Int): Int {
-        if (!settings.enableRandomization) return originalDistance
-
-        val maxOffset = (originalDistance * settings.randomSwipeDistancePercent).toInt()
-        if (maxOffset == 0) return originalDistance
-        val randomOffset = random.nextInt(-maxOffset, maxOffset + 1)
-        return (originalDistance + randomOffset).coerceAtLeast(10)
+    fun randomizeSwipeDistance(baseDistance: Float): Float {
+        if (settings.randomSwipeDistancePercent <= 0f) return baseDistance
+        
+        val variation = baseDistance * settings.randomSwipeDistancePercent
+        return baseDistance + Random.nextFloat() * variation * 2 - variation
     }
-
+    
     /**
-     * Create a randomized tap gesture path
-     * Instead of a single point, creates a small curve
+     * Randomize a gesture path by adding noise to coordinates
      */
-    fun createRandomizedTapPath(x: Int, y: Int): Path {
-        val path = Path()
-
-        if (!settings.enableRandomization || !settings.randomizeGesturePath) {
-            path.moveTo(x.toFloat(), y.toFloat())
-            return path
+    fun randomizePath(startX: Float, startY: Float, endX: Float, endY: Float): List<Pair<Float, Float>> {
+        if (!settings.randomizeGesturePath) {
+            return listOf(startX to startY, endX to endY)
         }
-
-        val pixels = settings.pathRandomizationPixels
-
-        // Add small random offset to tap position
-        val offsetX = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-        val offsetY = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-
-        path.moveTo((x + offsetX).toFloat(), (y + offsetY).toFloat())
-
-        // Add small micro-movements to simulate human touch
-        val microMoveCount = random.nextInt(2, 5)
-        for (i in 0 until microMoveCount) {
-            val microX = random.nextInt(-1, 2)
-            val microY = random.nextInt(-1, 2)
-            path.rMoveTo(microX.toFloat(), microY.toFloat())
+        
+        val path = mutableListOf<Pair<Float, Float>>()
+        path.add(startX to startY)
+        
+        // Add intermediate points with randomization
+        val steps = 3
+        for (i in 1 until steps) {
+            val t = i.toFloat() / steps
+            val baseX = startX + (endX - startX) * t
+            val baseY = startY + (endY - startY) * t
+            
+            val randomizedX = baseX + randomPixelOffset(settings.pathRandomizationPixels)
+            val randomizedY = baseY + randomPixelOffset(settings.pathRandomizationPixels)
+            
+            path.add(randomizedX to randomizedY)
         }
-
+        
+        path.add(endX to endY)
         return path
     }
-
+    
     /**
-     * Create a randomized swipe gesture path
-     * Instead of straight line, creates a slightly curved path
+     * Randomize a single coordinate
      */
-    fun createRandomizedSwipePath(
-        startX: Int, startY: Int,
-        endX: Int, endY: Int
-    ): Path {
-        val path = Path()
-
-        if (!settings.enableRandomization || !settings.randomizeGesturePath) {
-            path.moveTo(startX.toFloat(), startY.toFloat())
-            path.lineTo(endX.toFloat(), endY.toFloat())
-            return path
+    fun randomizeCoordinate(x: Float, y: Float, screenWidth: Int, screenHeight: Int): Pair<Float, Float> {
+        if (!settings.randomizeGesturePath) {
+            return x to y
         }
-
-        val pixels = settings.pathRandomizationPixels
-
-        // Randomize start and end points slightly
-        val startOffsetX = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-        val startOffsetY = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-        val endOffsetX = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-        val endOffsetY = if (pixels > 0) random.nextInt(-pixels, pixels + 1) else 0
-
-        val actualStartX = startX + startOffsetX
-        val actualStartY = startY + startOffsetY
-        val actualEndX = endX + endOffsetX
-        val actualEndY = endY + endOffsetY
-
-        path.moveTo(actualStartX.toFloat(), actualStartY.toFloat())
-
-        // Add control points for a curved path
-        // Number of control points based on swipe distance
-        val distance = sqrt(
-            (actualEndX - actualStartX).toFloat() * (actualEndX - actualStartX) +
-            (actualEndY - actualStartY).toFloat() * (actualEndY - actualStartY)
-        )
-
-        val controlPointCount = (distance / 100).toInt().coerceIn(1, 5)
-
-        for (i in 1..controlPointCount) {
-            val progress = i.toFloat() / (controlPointCount + 1)
-
-            // Interpolate position
-            val baseX = actualStartX + (actualEndX - actualStartX) * progress
-            val baseY = actualStartY + (actualEndY - actualStartY) * progress
-
-            // Add random perpendicular offset for curve effect
-            val maxCurveOffset = pixels * 2
-            val curveOffset = if (maxCurveOffset > 0) random.nextInt(-maxCurveOffset, maxCurveOffset + 1) else 0
-
-            // Calculate perpendicular direction
-            val angle = atan2(
-                (actualEndY - actualStartY).toDouble(),
-                (actualEndX - actualStartX).toDouble()
-            ) + kotlin.math.PI / 2
-
-            val curveX = baseX + (curveOffset * cos(angle)).toInt()
-            val curveY = baseY + (curveOffset * sin(angle)).toInt()
-
-            path.lineTo(curveX.toFloat(), curveY.toFloat())
+        
+        val pixelOffset = settings.pathRandomizationPixels
+        val xPercent = randomPixelOffset(pixelOffset) / screenWidth.toFloat()
+        val yPercent = randomPixelOffset(pixelOffset) / screenHeight.toFloat()
+        
+        return (x + xPercent).coerceIn(0f, 1f) to (y + yPercent).coerceIn(0f, 1f)
+    }
+    
+    /**
+     * Generate a random pixel offset
+     */
+    private fun randomPixelOffset(maxPixels: Int): Float {
+        if (maxPixels <= 0) return 0f
+        return Random.nextInt(-maxPixels, maxPixels + 1).toFloat()
+    }
+    
+    /**
+     * Randomize tap duration
+     */
+    fun randomizeTapDuration(baseDuration: Long): Long {
+        val variation = baseDuration * 0.1f
+        return (baseDuration + Random.nextFloat() * variation * 2 - variation).toLong()
+            .coerceAtLeast(50)
+    }
+    
+    /**
+     * Randomize swipe duration
+     */
+    fun randomizeSwipeDuration(baseDuration: Long): Long {
+        val variation = baseDuration * 0.15f
+        return (baseDuration + Random.nextFloat() * variation * 2 - variation).toLong()
+            .coerceAtLeast(100)
+    }
+    
+    /**
+     * Add random jitter to a long press
+     */
+    fun randomizeLongPressDuration(baseDuration: Long): Long {
+        val jitter = Random.nextLong(-50, 51)
+        return (baseDuration + jitter).coerceAtLeast(300)
+    }
+    
+    /**
+     * Generate random loop delay with variation
+     */
+    fun randomizeLoopDelay(baseDelay: Long): Long {
+        val variation = baseDelay * 0.2f
+        return (baseDelay + Random.nextFloat() * variation * 2 - variation).toLong()
+            .coerceAtLeast(100)
+    }
+    
+    /**
+     * Randomize scroll gesture
+     */
+    fun randomizeScroll(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        screenWidth: Int,
+        screenHeight: Int
+    ): Quadruple<Float, Float, Float, Float> {
+        val (rx1, ry1) = randomizeCoordinate(startX, startY, screenWidth, screenHeight)
+        val (rx2, ry2) = randomizeCoordinate(endX, endY, screenWidth, screenHeight)
+        
+        return Quadruple(rx1, ry1, rx2, ry2)
+    }
+    
+    /**
+     * Get random bezier control points for natural gesture motion
+     */
+    fun getBezierControlPoints(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float
+    ): Pair<Pair<Float, Float>, Pair<Float, Float>> {
+        val midX = (startX + endX) / 2
+        val midY = (startY + endY) / 2
+        
+        val controlOffset = settings.pathRandomizationPixels / 500f
+        
+        val cp1x = midX + Random.nextFloat() * controlOffset * 2 - controlOffset
+        val cp1y = midY + Random.nextFloat() * controlOffset * 2 - controlOffset
+        val cp2x = midX + Random.nextFloat() * controlOffset * 2 - controlOffset
+        val cp2y = midY + Random.nextFloat() * controlOffset * 2 - controlOffset
+        
+        return (cp1x to cp1y) to (cp2x to cp2y)
+    }
+    
+    /**
+     * Generate a random gesture curve for more natural movement
+     */
+    fun generateCurvePoints(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        numPoints: Int = 10
+    ): List<Pair<Float, Float>> {
+        if (!settings.randomizeGesturePath) {
+            return (0 until numPoints).map { i ->
+                val t = i.toFloat() / (numPoints - 1)
+                (startX + (endX - startX) * t) to (startY + (endY - startY) * t)
+            }
         }
-
-        path.lineTo(actualEndX.toFloat(), actualEndY.toFloat())
-
-        return path
-    }
-
-    /**
-     * Get randomized gesture duration
-     */
-    fun getRandomizedDuration(baseDurationMs: Long): Long {
-        if (!settings.enableRandomization) return baseDurationMs
-
-        // Add ±20% randomization
-        val maxOffset = (baseDurationMs * 0.2).toLong()
-        val randomOffset = if (maxOffset > 0) random.nextLong(-maxOffset, maxOffset + 1) else 0
-        return (baseDurationMs + randomOffset).coerceAtLeast(50)
-    }
-
-    /**
-     * Randomize order of processing items
-     * Returns a shuffled list of indices
-     */
-    fun getRandomizedIndices(count: Int): List<Int> {
-        if (!settings.enableRandomization || count <= 0) {
-            return (0 until count).toList()
+        
+        val (cp1, cp2) = getBezierControlPoints(startX, startY, endX, endY)
+        val (cp1x, cp1y) = cp1
+        val (cp2x, cp2y) = cp2
+        
+        return (0 until numPoints).map { i ->
+            val t = i.toFloat() / (numPoints - 1)
+            bezierPoint(startX, startY, cp1x, cp1y, cp2x, cp2y, endX, endY, t)
         }
-
-        return (0 until count).shuffled(random)
     }
-
+    
     /**
-     * Generate a random pause between actions
+     * Calculate bezier curve point
      */
-    fun getRandomPause(): Long {
-        return getRandomDelay(settings.minRandomDelayMs, settings.maxRandomDelayMs)
+    private fun bezierPoint(
+        x0: Float, y0: Float,
+        x1: Float, y1: Float,
+        x2: Float, y2: Float,
+        x3: Float, y3: Float,
+        t: Float
+    ): Pair<Float, Float> {
+        val cx = 3 * (x1 - x0)
+        val bx = 3 * (x2 - x1) - cx
+        val ax = x3 - x0 - cx - bx
+        
+        val cy = 3 * (y1 - y0)
+        val by = 3 * (y2 - y1) - cy
+        val ay = y3 - y0 - cy - by
+        
+        val x = ax * t * t * t + bx * t * t + cx * t + x0
+        val y = ay * t * t * t + by * t * t + cy * t + y0
+        
+        return x to y
     }
-
+    
     /**
-     * Add human-like variation to repeated actions
-     * Returns a factor to multiply standard values by
+     * Reset to default settings
      */
-    fun getHumanVariation(): Float {
-        if (!settings.enableRandomization) return 1.0f
-
-        // Returns a value between 0.8 and 1.2 (±20%)
-        return 0.8f + random.nextFloat() * 0.4f
+    fun reset() {
+        settings = RandomizationSettings()
     }
+}
 
-    /**
-     * Check if should add extra delay (simulates human hesitation)
-     * Probability increases with consecutive rapid actions
-     */
-    fun shouldAddHesitation(recentActionCount: Int): Boolean {
-        if (!settings.enableRandomization) return false
-
-        // 5% base chance + 2% per recent action
-        val probability = 0.05f + (recentActionCount * 0.02f)
-        return random.nextFloat() < probability
-    }
-
-    /**
-     * Get hesitation delay
-     */
-    fun getHesitationDelay(): Long {
-        return getRandomDelay(100, 500)
-    }
+/**
+ * Extension function to apply randomization to any gesture
+ */
+fun Long.withRandomization(): Long {
+    return RandomizationHelper.randomizeTapDuration(this)
 }
