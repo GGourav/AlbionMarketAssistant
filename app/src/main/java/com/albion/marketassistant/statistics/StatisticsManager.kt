@@ -1,360 +1,307 @@
 package com.albion.marketassistant.statistics
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.os.Environment
-import android.util.Log
-import com.albion.marketassistant.data.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import android.content.SharedPreferences
+import androidx.preference.PreferenceManager
+import com.albion.marketassistant.data.LogEntry
+import com.albion.marketassistant.data.LogLevel
+import com.albion.marketassistant.data.SessionHistory
+import com.albion.marketassistant.data.SessionStatistics
+import com.albion.marketassistant.data.ItemCache
+import com.albion.marketassistant.database.AppDatabase
+import com.albion.marketassistant.database.SessionHistoryDao
+import com.albion.marketassistant.database.ItemCacheDao
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
-class StatisticsManager(
-    private val context: Context,
-    private val scope: CoroutineScope
-) {
-    companion object {
-        private const val TAG = "StatisticsManager"
+/**
+ * Manages session statistics and history tracking
+ */
+class StatisticsManager(private val context: Context) {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val sharedPreferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
+    
+    private val sessionHistoryDao: SessionHistoryDao by lazy {
+        AppDatabase.getInstance(context).sessionHistoryDao()
     }
-
-    private val _statistics = MutableStateFlow(SessionStatistics())
-    val statistics: StateFlow<SessionStatistics> = _statistics
-
-    private val sessionId = System.currentTimeMillis()
-
-    private val totalCycles = AtomicInteger(0)
-    private val successfulOps = AtomicInteger(0)
-    private val failedOps = AtomicInteger(0)
-    private val priceUpdates = AtomicInteger(0)
-    private val ordersCreated = AtomicInteger(0)
-    private val ordersEdited = AtomicInteger(0)
-    private val errorsEncountered = AtomicInteger(0)
-    private val consecutiveErrors = AtomicInteger(0)
-    private val timeSavedMs = AtomicLong(0)
-    private val estimatedProfit = AtomicLong(0)
-
-    @Volatile
-    private var currentState: String = ""
-    @Volatile
-    private var stateEnterTime: Long = 0
-    @Volatile
-    private var lastCycleTime: Long = System.currentTimeMillis()
-    private val sessionStartTime = System.currentTimeMillis()
-
-    // Fixed: Use thread-safe collection
-    private val priceHistoryBuffer = ConcurrentLinkedQueue<PriceHistoryEntry>()
-    private val bufferLock = Any()
-
-    private val screenshotDir: File by lazy {
-        File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "screenshots").apply {
-            mkdirs()
-        }
+    
+    private val itemCacheDao: ItemCacheDao by lazy {
+        AppDatabase.getInstance(context).itemCacheDao()
     }
-
-    private val logDir: File by lazy {
-        File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "logs").apply {
-            mkdirs()
-        }
-    }
-
-    fun recordSuccess(operationType: String, price: Int? = null) {
-        successfulOps.incrementAndGet()
-        consecutiveErrors.set(0)
-
-        when (operationType) {
-            "CREATE" -> ordersCreated.incrementAndGet()
-            "EDIT" -> ordersEdited.incrementAndGet()
-            "PRICE_UPDATE" -> priceUpdates.incrementAndGet()
-        }
-
-        price?.let {
-            estimatedProfit.addAndGet(calculateEstimateProfit(it))
-            timeSavedMs.addAndGet(5000)
-        }
-
-        updateStatistics()
-    }
-
-    fun recordFailure(errorType: String) {
-        failedOps.incrementAndGet()
-        errorsEncountered.incrementAndGet()
-        consecutiveErrors.incrementAndGet()
-
-        logError(errorType)
-        updateStatistics()
-    }
-
-    fun recordCycle() {
-        totalCycles.incrementAndGet()
-        lastCycleTime = System.currentTimeMillis()
-        updateStatistics()
-    }
-
-    fun recordPrice(itemId: String, price: Int, mode: String, successful: Boolean) {
-        val entry = PriceHistoryEntry(
-            itemId = itemId,
-            price = price,
-            timestamp = System.currentTimeMillis(),
-            sourceMode = mode,
-            wasSuccessful = successful,
-            sessionId = sessionId
+    
+    private val _currentSession = MutableStateFlow(SessionStatistics())
+    val currentSession: StateFlow<SessionStatistics> = _currentSession
+    
+    private val _logEntries = MutableStateFlow<List<LogEntry>>(emptyList())
+    val logEntries: StateFlow<List<LogEntry>> = _logEntries
+    
+    private val _totalStats = MutableStateFlow(TotalStatistics())
+    val totalStats: StateFlow<TotalStatistics> = _totalStats
+    
+    private var sessionStartTime: Long = 0
+    private var lastCycleTime: Long = 0
+    
+    data class TotalStatistics(
+        val totalSessions: Int = 0,
+        val totalItemsProcessed: Int = 0,
+        val totalProfitSilver: Long = 0,
+        val totalTimeMs: Long = 0,
+        val averageCycleTimeMs: Long = 0
+    )
+    
+    /**
+     * Start a new session
+     */
+    fun startSession() {
+        sessionStartTime = System.currentTimeMillis()
+        lastCycleTime = sessionStartTime
+        
+        _currentSession.value = SessionStatistics(
+            startTime = sessionStartTime,
+            priceUpdates = 0,
+            timeSavedMs = 0,
+            estimatedProfitSilver = 0,
+            sessionDurationMs = 0,
+            averageCycleTimeMs = 0,
+            lastCycleTime = sessionStartTime,
+            lastState = "INITIALIZING",
+            stateEnterTime = sessionStartTime
         )
-
-        synchronized(bufferLock) {
-            priceHistoryBuffer.add(entry)
-
-            if (priceHistoryBuffer.size > 1000) {
-                val entriesToFlush = priceHistoryBuffer.toList()
-                priceHistoryBuffer.clear()
-                scope.launch(Dispatchers.IO) {
-                    writePriceHistoryToFile(entriesToFlush)
-                }
-            }
-        }
+        
+        log(LogLevel.INFO, "StatisticsManager", "Session started")
     }
-
-    private suspend fun writePriceHistoryToFile(entries: List<PriceHistoryEntry>) {
-        try {
-            val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-            val file = File(logDir, "price_history_${timestamp}.csv")
-
-            val exists = file.exists()
-            file.appendText(buildString {
-                if (!exists) {
-                    appendLine("Item,Price,Timestamp,Mode,Success,SessionId")
-                }
-                entries.forEach { entry ->
-                    appendLine("${entry.itemId},${entry.price},${entry.timestamp},${entry.sourceMode},${entry.wasSuccessful},${entry.sessionId}")
-                }
-            })
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write price history: ${e.message}")
-        }
+    
+    /**
+     * Record a price update
+     */
+    fun recordPriceUpdate(profitSilver: Long = 0) {
+        val currentTime = System.currentTimeMillis()
+        val cycleTime = currentTime - lastCycleTime
+        lastCycleTime = currentTime
+        
+        val current = _currentSession.value
+        val totalUpdates = current.priceUpdates + 1
+        val totalTime = current.sessionDurationMs + cycleTime
+        
+        _currentSession.value = current.copy(
+            priceUpdates = totalUpdates,
+            estimatedProfitSilver = current.estimatedProfitSilver + profitSilver,
+            sessionDurationMs = currentTime - sessionStartTime,
+            averageCycleTimeMs = if (totalUpdates > 0) totalTime / totalUpdates else 0,
+            lastCycleTime = cycleTime,
+            lastState = "PRICE_UPDATE",
+            stateEnterTime = currentTime
+        )
+        
+        log(LogLevel.INFO, "StatisticsManager", "Price update #${totalUpdates}, profit: +${profitSilver} silver")
     }
-
-    fun updateState(state: String) {
-        if (currentState != state) {
-            currentState = state
+    
+    /**
+     * Update the current state
+     */
+    fun updateState(stateName: String) {
+        val current = _currentSession.value
+        _currentSession.value = current.copy(
+            lastState = stateName,
             stateEnterTime = System.currentTimeMillis()
-        }
-    }
-
-    fun isStuck(maxStuckTimeMs: Long): Boolean {
-        if (currentState.isEmpty() || stateEnterTime == 0L) return false
-        return System.currentTimeMillis() - stateEnterTime > maxStuckTimeMs
-    }
-
-    fun getConsecutiveErrors(): Int = consecutiveErrors.get()
-
-    fun resetConsecutiveErrors() {
-        consecutiveErrors.set(0)
-    }
-
-    fun saveScreenshot(bitmap: Bitmap, prefix: String = "error"): File? {
-        return try {
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val file = File(screenshotDir, "${prefix}_${timestamp}.png")
-
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
-            }
-
-            logEvent("Screenshot saved: ${file.absolutePath}")
-            file
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save screenshot: ${e.message}")
-            null
-        }
-    }
-
-    suspend fun exportSessionLog(): File? = withContext(Dispatchers.IO) {
-        try {
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val file = File(logDir, "session_${timestamp}.csv")
-
-            val stats = _statistics.value
-
-            file.writeText(buildString {
-                appendLine("Albion Market Assistant - Session Log")
-                appendLine("Session ID,$sessionId")
-                appendLine("Start Time,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(sessionStartTime))}")
-                appendLine("End Time,${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
-                appendLine()
-                appendLine("Statistics")
-                appendLine("Total Cycles,${stats.totalCycles}")
-                appendLine("Successful Operations,${stats.successfulOperations}")
-                appendLine("Failed Operations,${stats.failedOperations}")
-                appendLine("Success Rate,${(stats.getSuccessRate() * 100).toInt()}%")
-                appendLine("Price Updates,${stats.priceUpdates}")
-                appendLine("Orders Created,${stats.ordersCreated}")
-                appendLine("Orders Edited,${stats.ordersEdited}")
-                appendLine("Errors Encountered,${stats.errorsEncountered}")
-                appendLine("Session Duration,${stats.getSessionDurationFormatted()}")
-                appendLine("Estimated Time Saved,${stats.timeSavedMs / 1000}s")
-                appendLine("Estimated Profit,${stats.estimatedProfitSilver} silver")
-                appendLine()
-                appendLine("Price History (last 50 entries)")
-                appendLine("Item,Price,Timestamp,Mode,Success")
-
-                synchronized(bufferLock) {
-                    priceHistoryBuffer.toList().takeLast(50).forEach { entry ->
-                        appendLine("${entry.itemId},${entry.price},${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.timestamp))},${entry.sourceMode},${entry.wasSuccessful}")
-                    }
-                }
-            })
-
-            logEvent("Session log exported: ${file.absolutePath}")
-            file
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to export session log: ${e.message}")
-            null
-        }
-    }
-
-    suspend fun flushPriceHistory() = withContext(Dispatchers.IO) {
-        synchronized(bufferLock) {
-            if (priceHistoryBuffer.isEmpty()) return@withContext
-
-            try {
-                val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-                val file = File(logDir, "price_history_${timestamp}.csv")
-
-                val exists = file.exists()
-                file.appendText(buildString {
-                    if (!exists) {
-                        appendLine("Item,Price,Timestamp,Mode,Success,SessionId")
-                    }
-                    priceHistoryBuffer.forEach { entry ->
-                        appendLine("${entry.itemId},${entry.price},${entry.timestamp},${entry.sourceMode},${entry.wasSuccessful},${entry.sessionId}")
-                    }
-                })
-
-                priceHistoryBuffer.clear()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to flush price history: ${e.message}")
-            }
-        }
-    }
-
-    fun getPriceHistory(itemId: String, limit: Int = 100): List<PriceHistoryEntry> {
-        synchronized(bufferLock) {
-            return priceHistoryBuffer
-                .filter { it.itemId == itemId }
-                .sortedByDescending { it.timestamp }
-                .take(limit)
-        }
-    }
-
-    fun detectPriceAnomaly(itemId: String, currentPrice: Int, threshold: Float = 0.2f): Boolean {
-        val history = getPriceHistory(itemId, 10)
-        if (history.size < 3) return false
-
-        val avgPrice = history.map { it.price }.average()
-        val deviation = kotlin.math.abs(currentPrice - avgPrice) / avgPrice
-
-        return deviation > threshold
-    }
-
-    fun getPriceTrend(itemId: String): Int {
-        val history = getPriceHistory(itemId, 5)
-        if (history.size < 2) return 0
-
-        val recent = history.take(2)
-        val older = history.drop(2)
-
-        if (older.isEmpty()) return 0
-
-        val recentAvg = recent.map { it.price }.average()
-        val olderAvg = older.map { it.price }.average()
-
-        val diff = (recentAvg - olderAvg) / olderAvg
-
-        return when {
-            diff > 0.05 -> 1
-            diff < -0.05 -> -1
-            else -> 0
-        }
-    }
-
-    fun resetSession() {
-        totalCycles.set(0)
-        successfulOps.set(0)
-        failedOps.set(0)
-        priceUpdates.set(0)
-        ordersCreated.set(0)
-        ordersEdited.set(0)
-        errorsEncountered.set(0)
-        consecutiveErrors.set(0)
-        timeSavedMs.set(0)
-        estimatedProfit.set(0)
-        currentState = ""
-        stateEnterTime = 0
-
-        updateStatistics()
-    }
-
-    fun getStatistics(): SessionStatistics = _statistics.value
-
-    private fun updateStatistics() {
-        val duration = System.currentTimeMillis() - sessionStartTime
-        val cycles = totalCycles.get()
-        val avgCycleTime = if (cycles > 0) duration / cycles else 0
-
-        _statistics.value = SessionStatistics(
-            sessionStartTime = sessionStartTime,
-            totalCycles = cycles,
-            successfulOperations = successfulOps.get(),
-            failedOperations = failedOps.get(),
-            priceUpdates = priceUpdates.get(),
-            ordersCreated = ordersCreated.get(),
-            ordersEdited = ordersEdited.get(),
-            errorsEncountered = errorsEncountered.get(),
-            timeSavedMs = timeSavedMs.get(),
-            estimatedProfitSilver = estimatedProfit.get(),
-            sessionDurationMs = duration,
-            averageCycleTimeMs = avgCycleTime,
-            lastCycleTime = lastCycleTime,
-            consecutiveErrors = consecutiveErrors.get(),
-            lastState = currentState,
-            stateEnterTime = stateEnterTime
         )
     }
-
-    private fun calculateEstimateProfit(price: Int): Long {
-        return (price * 0.01).toLong()
+    
+    /**
+     * Record time saved
+     */
+    fun recordTimeSaved(timeMs: Long) {
+        val current = _currentSession.value
+        _currentSession.value = current.copy(
+            timeSavedMs = current.timeSavedMs + timeMs
+        )
     }
-
-    private fun logEvent(message: String) {
-        scope.launch(Dispatchers.IO) {
+    
+    /**
+     * End the current session
+     */
+    fun endSession() {
+        val session = _currentSession.value
+        val endTime = System.currentTimeMillis()
+        
+        scope.launch {
             try {
-                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-                val file = File(logDir, "events.log")
-                file.appendText("[$timestamp] $message\n")
+                val history = SessionHistory(
+                    startTime = session.startTime,
+                    endTime = endTime,
+                    mode = "AUTO",
+                    itemsProcessed = session.priceUpdates,
+                    totalProfit = session.estimatedProfitSilver,
+                    averageCycleTime = session.averageCycleTimeMs
+                )
+                sessionHistoryDao.insert(history)
+                
+                // Update total statistics
+                updateTotalStatistics()
             } catch (e: Exception) {
-                // Ignore logging errors
+                log(LogLevel.ERROR, "StatisticsManager", "Failed to save session: ${e.message}")
+            }
+        }
+        
+        log(LogLevel.INFO, "StatisticsManager", "Session ended. Items: ${session.priceUpdates}, Profit: ${session.estimatedProfitSilver}")
+    }
+    
+    /**
+     * Log an entry
+     */
+    fun log(level: LogLevel, tag: String, message: String) {
+        val entry = LogEntry(
+            timestamp = System.currentTimeMillis(),
+            level = level,
+            tag = tag,
+            message = message
+        )
+        
+        val currentLogs = _logEntries.value.toMutableList()
+        currentLogs.add(entry)
+        
+        // Keep only last 500 entries
+        if (currentLogs.size > 500) {
+            currentLogs.removeAt(0)
+        }
+        
+        _logEntries.value = currentLogs
+    }
+    
+    /**
+     * Get formatted session duration
+     */
+    fun getSessionDuration(): String {
+        return _currentSession.value.getSessionDurationFormatted()
+    }
+    
+    /**
+     * Get formatted time
+     */
+    fun formatDuration(ms: Long): String {
+        val hours = ms / 3600000
+        val minutes = (ms % 3600000) / 60000
+        val seconds = (ms % 60000) / 1000
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds)
+    }
+    
+    /**
+     * Get formatted timestamp
+     */
+    fun formatTimestamp(timestamp: Long): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        return sdf.format(Date(timestamp))
+    }
+    
+    /**
+     * Update item cache
+     */
+    fun updateItemCache(itemName: String, price: Int, category: String = "") {
+        scope.launch {
+            try {
+                val cache = ItemCache(
+                    itemName = itemName,
+                    lastPrice = price,
+                    lastUpdated = System.currentTimeMillis(),
+                    category = category
+                )
+                itemCacheDao.insert(cache)
+            } catch (e: Exception) {
+                log(LogLevel.ERROR, "StatisticsManager", "Failed to update item cache: ${e.message}")
             }
         }
     }
-
-    private fun logError(message: String) {
-        scope.launch(Dispatchers.IO) {
+    
+    /**
+     * Get cached item price
+     */
+    suspend fun getCachedItemPrice(itemName: String): Int? {
+        return try {
+            itemCacheDao.getPrice(itemName)
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    /**
+     * Load total statistics from history
+     */
+    private suspend fun updateTotalStatistics() {
+        try {
+            val sessions = sessionHistoryDao.getAllSessions()
+            
+            val total = TotalStatistics(
+                totalSessions = sessions.size,
+                totalItemsProcessed = sessions.sumOf { it.itemsProcessed },
+                totalProfitSilver = sessions.sumOf { it.totalProfit },
+                totalTimeMs = sessions.sumOf { it.endTime - it.startTime },
+                averageCycleTimeMs = if (sessions.isNotEmpty()) {
+                    sessions.map { it.averageCycleTime }.average().toLong()
+                } else 0
+            )
+            
+            _totalStats.value = total
+        } catch (e: Exception) {
+            log(LogLevel.ERROR, "StatisticsManager", "Failed to load total stats: ${e.message}")
+        }
+    }
+    
+    /**
+     * Load statistics on init
+     */
+    init {
+        scope.launch {
+            updateTotalStatistics()
+        }
+    }
+    
+    /**
+     * Clear all history
+     */
+    fun clearHistory() {
+        scope.launch {
             try {
-                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-                val file = File(logDir, "errors.log")
-                file.appendText("[$timestamp] ERROR: $message\n")
+                sessionHistoryDao.deleteAll()
+                itemCacheDao.deleteAll()
+                _logEntries.value = emptyList()
+                updateTotalStatistics()
+                log(LogLevel.INFO, "StatisticsManager", "History cleared")
             } catch (e: Exception) {
-                // Ignore logging errors
+                log(LogLevel.ERROR, "StatisticsManager", "Failed to clear history: ${e.message}")
             }
         }
+    }
+    
+    /**
+     * Export statistics to string
+     */
+    fun exportStatistics(): String {
+        val session = _currentSession.value
+        val total = _totalStats.value
+        
+        return buildString {
+            appendLine("=== Current Session ===")
+            appendLine("Duration: ${getSessionDuration()}")
+            appendLine("Items processed: ${session.priceUpdates}")
+            appendLine("Profit: ${session.estimatedProfitSilver} silver")
+            appendLine("Average cycle: ${formatDuration(session.averageCycleTimeMs)}")
+            appendLine()
+            appendLine("=== Total Statistics ===")
+            appendLine("Total sessions: ${total.totalSessions}")
+            appendLine("Total items: ${total.totalItemsProcessed}")
+            appendLine("Total profit: ${total.totalProfitSilver} silver")
+            appendLine("Total time: ${formatDuration(total.totalTimeMs)}")
+        }
+    }
+    
+    /**
+     * Cleanup
+     */
+    fun cleanup() {
+        scope.cancel()
     }
 }
