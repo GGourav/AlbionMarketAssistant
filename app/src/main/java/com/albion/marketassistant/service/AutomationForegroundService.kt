@@ -1,5 +1,5 @@
 // FILE: app/src/main/java/com/albion/marketassistant/service/AutomationForegroundService.kt
-// UPDATED: v3 - Fixed HANDLE_ERROR_POPUP with step logging + correct +1 outbid flow
+// UPDATED: v3 - Fixed HANDLE_ERROR_POPUP with step logging
 
 package com.albion.marketassistant.service
 
@@ -43,7 +43,6 @@ class AutomationForegroundService : Service() {
         const val ACTION_RESUME = "com.albion.RESUME"
         const val ACTION_ACCESSIBILITY_READY = "com.albion.ACCESSIBILITY_READY"
         
-        // Keys for SharedPreferences
         const val PREF_DEBUG_MODE = "debug_mode"
         const val PREF_MAX_ITEMS_CREATE = "max_items_create"
         const val PREF_MAX_ORDERS_EDIT = "max_orders_edit"
@@ -63,7 +62,7 @@ class AutomationForegroundService : Service() {
             when (intent?.action) {
                 ACTION_ACCESSIBILITY_READY -> {
                     isAccessibilityReady = true
-                    showToast("✓ Accessibility Service Ready")
+                    showToast("Accessibility Service Ready")
                     pendingMode?.let { mode ->
                         startAutomationMode(mode)
                         pendingMode = null
@@ -140,7 +139,7 @@ class AutomationForegroundService : Service() {
         
         currentMode = OperationMode.NEW_ORDER_SWEEPER
         val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
-        showToast("🟢 Create Buy Order Mode${if (debugMode) " [DEBUG]" else ""}")
+        showToast("Create Buy Order Mode" + if (debugMode) " [DEBUG]" else "")
         startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
     }
 
@@ -149,7 +148,7 @@ class AutomationForegroundService : Service() {
         
         currentMode = OperationMode.ORDER_EDITOR
         val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
-        showToast("🔵 Edit Buy Order Mode${if (debugMode) " [DEBUG]" else ""}")
+        showToast("Edit Buy Order Mode" + if (debugMode) " [DEBUG]" else "")
         startAutomationMode(OperationMode.ORDER_EDITOR)
     }
 
@@ -157,13 +156,13 @@ class AutomationForegroundService : Service() {
         stateMachine?.pause()
         floatingOverlayManager?.updateStatus("PAUSED")
         updateNotification("Paused", "")
-        showToast("⏸ Paused")
+        showToast("Paused")
     }
 
     private fun handleResume() {
         stateMachine?.resume()
         floatingOverlayManager?.updateStatus("Running")
-        showToast("▶ Resumed")
+        showToast("Resumed")
     }
 
     private fun handleStopMode() {
@@ -173,14 +172,13 @@ class AutomationForegroundService : Service() {
         pendingMode = null
         currentCalibration = null
         floatingOverlayManager?.hide()
-        showToast("⏹ Stopped")
+        showToast("Stopped")
         updateNotification("Ready", "Tap Create or Edit to start")
-        Log.d(TAG, "Automation stopped")
     }
 
     private fun checkPermissions(): Boolean {
         if (!Settings.canDrawOverlays(this)) {
-            showToast("Please grant 'Display over other apps' permission")
+            showToast("Please grant Display over other apps permission")
             return false
         }
 
@@ -196,29 +194,11 @@ class AutomationForegroundService : Service() {
     private fun startAutomationMode(mode: OperationMode) {
         serviceScope.launch {
             try {
-                // Get debug mode from SharedPreferences
                 val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
                 
-                // Load calibration from database
                 val database = CalibrationDatabase.getInstance(applicationContext)
                 var calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
                 
-                // Override max items from SharedPreferences if set
-                val maxItemsCreate = sharedPreferences.getInt(PREF_MAX_ITEMS_CREATE, -1)
-                val maxOrdersEdit = sharedPreferences.getInt(PREF_MAX_ORDERS_EDIT, -1)
-                
-                if (maxItemsCreate > 0 || maxOrdersEdit > 0) {
-                    calibration = calibration.copy(
-                        createMode = calibration.createMode.copy(
-                            maxItemsToProcess = if (maxItemsCreate > 0) maxItemsCreate else calibration.createMode.maxItemsToProcess
-                        ),
-                        editMode = calibration.editMode.copy(
-                            maxOrdersToEdit = if (maxOrdersEdit > 0) maxOrdersEdit else calibration.editMode.maxOrdersToEdit
-                        )
-                    )
-                }
-                
-                // In debug mode, only process 1 item
                 if (debugMode) {
                     calibration = calibration.copy(
                         createMode = calibration.createMode.copy(maxItemsToProcess = 1),
@@ -231,15 +211,13 @@ class AutomationForegroundService : Service() {
                 val accessibilityService = MarketAccessibilityService.getInstance()
 
                 if (accessibilityService == null) {
-                    showToast("❌ Accessibility Service not available")
+                    showToast("Accessibility Service not available")
                     updateNotification("Error", "Service not available")
                     return@launch
                 }
 
-                // Pass calibration to the accessibility service
                 accessibilityService.setCalibration(calibration)
 
-                // Create state machine with debug mode
                 stateMachine?.stop()
                 stateMachine = StateMachine(
                     scope = serviceScope,
@@ -249,7 +227,6 @@ class AutomationForegroundService : Service() {
                     debugMode = debugMode
                 )
 
-                // Setup callbacks
                 stateMachine?.onStateChange = { state ->
                     val modeText = when (mode) {
                         OperationMode.NEW_ORDER_SWEEPER -> "CREATE"
@@ -257,7 +234,7 @@ class AutomationForegroundService : Service() {
                         OperationMode.IDLE -> "IDLE"
                     }
                     
-                    val statusText = "${state.stateType.name}"
+                    val statusText = state.stateType.name
                     val subText = "Items: ${state.itemsProcessed}"
                     
                     updateNotification("$modeText: $statusText", subText)
@@ -266,7 +243,6 @@ class AutomationForegroundService : Service() {
                         if (mode == OperationMode.NEW_ORDER_SWEEPER) calibration.createMode.maxItemsToProcess 
                         else calibration.editMode.maxOrdersToEdit)
                     
-                    // Show error if any
                     state.errorMessage?.let { error ->
                         if (error.contains("FAILED") || error.contains("ERROR")) {
                             showErrorDialog(error)
@@ -280,13 +256,13 @@ class AutomationForegroundService : Service() {
                 }
 
                 stateMachine?.onPriceSanityError = { error ->
-                    showToast("⚠️ SAFETY: $error")
+                    showToast("SAFETY: $error")
                     floatingOverlayManager?.updateStatus("SAFETY HALT")
                     stateMachine?.pause()
                 }
 
                 stateMachine?.onEndOfList = {
-                    showToast("✅ All items processed!")
+                    showToast("All items processed!")
                     floatingOverlayManager?.updateStatus("COMPLETE")
                 }
 
@@ -299,11 +275,9 @@ class AutomationForegroundService : Service() {
                 }
 
                 stateMachine?.onStepUpdate = { step ->
-                    // Update notification with current step
                     updateNotification(step, "Mode: ${mode.name}")
                 }
 
-                // Start automation
                 stateMachine?.startMode(mode)
 
                 val modeName = when (mode) {
@@ -313,7 +287,7 @@ class AutomationForegroundService : Service() {
                 }
 
                 val debugText = if (debugMode) " [DEBUG - 1 item only]" else ""
-                showToast("✅ $modeName started$debugText")
+                showToast("$modeName started$debugText")
                 updateNotification("Running: $modeName$debugText", "Initializing...")
                 floatingOverlayManager?.show()
                 floatingOverlayManager?.updateStatus("Running")
@@ -330,13 +304,10 @@ class AutomationForegroundService : Service() {
     }
 
     private fun showErrorDialog(error: String) {
-        // Show a toast with the full error
-        showToast("❌ $error")
-        
-        // Also log it
-        Log.e(TAG, "═══════════════════════════════════════")
+        showToast("ERROR: $error")
+        Log.e(TAG, "========================================")
         Log.e(TAG, error)
-        Log.e(TAG, "═══════════════════════════════════════")
+        Log.e(TAG, "========================================")
     }
 
     private fun showStatisticsToast() {
@@ -374,7 +345,7 @@ class AutomationForegroundService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("🛒 Albion Market Assistant")
+            .setContentTitle("Albion Market Assistant")
             .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
