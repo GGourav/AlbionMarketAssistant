@@ -5,320 +5,379 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
-import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
-import android.media.Image
-import android.media.ImageReader
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.util.DisplayMetrics
-import android.view.WindowManager
+import android.provider.Settings
+import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
 import com.albion.marketassistant.R
-import com.albion.marketassistant.data.AutomationMode
-import com.albion.marketassistant.data.AutomationState
-import com.albion.marketassistant.data.CalibrationData
-import com.albion.marketassistant.data.RandomizationSettings
-import com.albion.marketassistant.data.SessionStatistics
-import com.albion.marketassistant.ml.ColorDetector
-import com.albion.marketassistant.ocr.TesseractOcrEngine
-import com.albion.marketassistant.util.RandomizationHelper
+import com.albion.marketassistant.accessibility.MarketAccessibilityService
+import com.albion.marketassistant.accessibility.StateMachine
+import com.albion.marketassistant.data.*
+import com.albion.marketassistant.db.CalibrationDatabase
+import com.albion.marketassistant.ui.MainActivity
+import com.albion.marketassistant.ui.overlay.FloatingOverlayManager
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 class AutomationForegroundService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "automation_channel"
-        const val NOTIFICATION_ID = 1001
-        
-        const val ACTION_START = "com.albion.marketassistant.START"
-        const val ACTION_STOP = "com.albion.marketassistant.STOP"
-        const val ACTION_PAUSE = "com.albion.marketassistant.PAUSE"
-        const val ACTION_RESUME = "com.albion.marketassistant.RESUME"
-        
-        const val EXTRA_MODE = "mode"
-        const val EXTRA_MEDIA_RESULT_CODE = "media_result_code"
-        const val EXTRA_MEDIA_RESULT_DATA = "media_result_data"
+        private const val TAG = "AutomationService"
+        private const val NOTIFICATION_ID = 12345
+        private const val CHANNEL_ID = "AlbionAssistant"
+
+        const val ACTION_CREATE_MODE = "com.albion.CREATE_MODE"
+        const val ACTION_EDIT_MODE = "com.albion.EDIT_MODE"
+        const val ACTION_STOP_MODE = "com.albion.STOP_MODE"
+        const val ACTION_PAUSE = "com.albion.PAUSE"
+        const val ACTION_RESUME = "com.albion.RESUME"
+        const val ACTION_ACCESSIBILITY_READY = "com.albion.ACCESSIBILITY_READY"
         
         const val PREF_DEBUG_MODE = "debug_mode"
-        
-        private val _isRunning = MutableStateFlow(false)
-        val isRunning: StateFlow<Boolean> = _isRunning
-        
-        private val _currentState = MutableStateFlow("IDLE")
-        val currentState: StateFlow<String> = _currentState
-        
-        private val _statistics = MutableStateFlow(SessionStatistics())
-        val statistics: StateFlow<SessionStatistics> = _statistics
-        
-        private val _progress = MutableStateFlow("")
-        val progress: StateFlow<String> = _progress
-        
-        private val _lastError = MutableStateFlow<String?>(null)
-        val lastError: StateFlow<String?> = _lastError
+        const val PREF_MAX_ITEMS_CREATE = "max_items_create"
+        const val PREF_MAX_ORDERS_EDIT = "max_orders_edit"
     }
 
-    private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    
-    private var screenWidth = 1080
-    private var screenHeight = 2400
-    private var screenDensity = 420
-    
-    private lateinit var windowManager: WindowManager
-    private lateinit var mediaProjectionManager: MediaProjectionManager
-    private lateinit var notificationManager: NotificationManager
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var stateMachine: StateMachine? = null
+    private var isAccessibilityReady = false
+    private var pendingMode: OperationMode? = null
+    private var currentMode: OperationMode? = null
+    private var floatingOverlayManager: FloatingOverlayManager? = null
+    private var currentCalibration: CalibrationData? = null
     private lateinit var sharedPreferences: SharedPreferences
-    
-    private lateinit var stateMachine: StateMachine
-    private lateinit var ocrEngine: TesseractOcrEngine
-    private lateinit var colorDetector: ColorDetector
-    
-    private var calibrationData: CalibrationData = CalibrationData()
-    private var randomizationSettings: RandomizationSettings = RandomizationSettings()
-    
-    private var automationJob: Job? = null
-    private var scope: CoroutineScope? = null
-    
-    private var isPaused = false
-    private var debugMode = false
-    
+
+    private val broadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_ACCESSIBILITY_READY -> {
+                    isAccessibilityReady = true
+                    showToast("✓ Accessibility Service Ready")
+                    pendingMode?.let { mode ->
+                        startAutomationMode(mode)
+                        pendingMode = null
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
-        
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
-        
-        debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
-        
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(metrics)
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-        screenDensity = metrics.densityDpi
-        
         createNotificationChannel()
-        
-        ocrEngine = TesseractOcrEngine(this)
-        colorDetector = ColorDetector()
-        
-        RandomizationHelper.initialize(randomizationSettings)
-        
-        stateMachine = StateMachine(
-            screenWidth = screenWidth,
-            screenHeight = screenHeight,
-            ocrEngine = ocrEngine,
-            colorDetector = colorDetector,
-            debugMode = debugMode
-        )
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+
+        val intentFilter = IntentFilter(ACTION_ACCESSIBILITY_READY)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(broadcastReceiver, intentFilter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(broadcastReceiver, intentFilter)
+        }
+
+        isAccessibilityReady = MarketAccessibilityService.isServiceEnabled()
+
+        floatingOverlayManager = FloatingOverlayManager(this) { action ->
+            handleOverlayAction(action)
+        }
+
+        startForeground(NOTIFICATION_ID, createNotification("Ready", "Tap Create or Edit to start"))
+        Log.d(TAG, "Service created")
     }
-    
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> {
-                val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getSerializableExtra(EXTRA_MODE, AutomationMode::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getSerializableExtra(EXTRA_MODE) as? AutomationMode
-                } ?: AutomationMode.CREATE_BUY_ORDER
-                
-                val resultCode = intent.getIntExtra(EXTRA_MEDIA_RESULT_CODE, -1)
-                val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(EXTRA_MEDIA_RESULT_DATA, Intent::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra(EXTRA_MEDIA_RESULT_DATA)
-                }
-                
-                if (resultCode != -1 && resultData != null) {
-                    startAutomation(mode, resultCode, resultData)
-                }
-            }
-            ACTION_STOP -> {
-                stopAutomation()
-                stopSelf()
-            }
-            ACTION_PAUSE -> {
-                isPaused = true
-                updateProgress("PAUSED")
-            }
-            ACTION_RESUME -> {
-                isPaused = false
-                updateProgress("RESUMED")
+        intent?.let {
+            when (it.action) {
+                ACTION_CREATE_MODE -> handleCreateMode()
+                ACTION_EDIT_MODE -> handleEditMode()
+                ACTION_STOP_MODE -> handleStopMode()
+                ACTION_PAUSE -> handlePause()
+                ACTION_RESUME -> handleResume()
             }
         }
-        
         return START_STICKY
     }
-    
+
     override fun onBind(intent: Intent?): IBinder? = null
-    
+
     override fun onDestroy() {
-        stopAutomation()
-        ocrEngine.close()
+        Log.d(TAG, "Service destroying")
+        stateMachine?.stop()
+        floatingOverlayManager?.hide()
+        serviceScope.cancel()
+        try {
+            unregisterReceiver(broadcastReceiver)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering receiver", e)
+        }
         super.onDestroy()
     }
-    
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Automation Service",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "Albion Market Assistant automation service"
+
+    private fun handleOverlayAction(action: String) {
+        when (action) {
+            "CREATE" -> handleCreateMode()
+            "EDIT" -> handleEditMode()
+            "PAUSE" -> handlePause()
+            "RESUME" -> handleResume()
+            "STOP" -> handleStopMode()
+            "STATS" -> showStatisticsToast()
         }
-        notificationManager.createNotificationChannel(channel)
     }
-    
-    private fun createNotification(): Notification {
-        val stopIntent = Intent(this, AutomationForegroundService::class.java).apply {
-            action = ACTION_STOP
+
+    private fun handleCreateMode() {
+        if (!checkPermissions()) return
+        
+        currentMode = OperationMode.NEW_ORDER_SWEEPER
+        val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
+        showToast("🟢 Create Buy Order Mode${if (debugMode) " [DEBUG]" else ""}")
+        startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
+    }
+
+    private fun handleEditMode() {
+        if (!checkPermissions()) return
+        
+        currentMode = OperationMode.ORDER_EDITOR
+        val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
+        showToast("🔵 Edit Buy Order Mode${if (debugMode) " [DEBUG]" else ""}")
+        startAutomationMode(OperationMode.ORDER_EDITOR)
+    }
+
+    private fun handlePause() {
+        stateMachine?.pause()
+        floatingOverlayManager?.updateStatus("PAUSED")
+        updateNotification("Paused", "")
+        showToast("⏸ Paused")
+    }
+
+    private fun handleResume() {
+        stateMachine?.resume()
+        floatingOverlayManager?.updateStatus("Running")
+        showToast("▶ Resumed")
+    }
+
+    private fun handleStopMode() {
+        stateMachine?.stop()
+        stateMachine = null
+        currentMode = null
+        pendingMode = null
+        currentCalibration = null
+        floatingOverlayManager?.hide()
+        showToast("⏹ Stopped")
+        updateNotification("Ready", "Tap Create or Edit to start")
+        Log.d(TAG, "Automation stopped")
+    }
+
+    private fun checkPermissions(): Boolean {
+        if (!Settings.canDrawOverlays(this)) {
+            showToast("Please grant 'Display over other apps' permission")
+            return false
         }
-        val stopPendingIntent = PendingIntent.getService(
-            this, 0, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Albion Market Assistant")
-            .setContentText("Automation running - ${_progress.value}")
-            .setSmallIcon(R.drawable.ic_notification)
-            .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent)
-            .setOngoing(true)
-            .build()
+
+        if (!isAccessibilityReady && !MarketAccessibilityService.isServiceEnabled()) {
+            showToast("Please enable Accessibility Service in Settings")
+            return false
+        }
+
+        isAccessibilityReady = true
+        return true
     }
-    
-    private fun startAutomation(mode: AutomationMode, resultCode: Int, resultData: Intent) {
-        startForeground(NOTIFICATION_ID, createNotification())
-        
-        _isRunning.value = true
-        _lastError.value = null
-        
-        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData)
-        setupImageReader()
-        
-        scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-        
-        automationJob = scope?.launch {
+
+    private fun startAutomationMode(mode: OperationMode) {
+        serviceScope.launch {
             try {
-                stateMachine.initialize(calibrationData, mode)
+                val debugMode = sharedPreferences.getBoolean(PREF_DEBUG_MODE, false)
                 
-                while (_isRunning.value) {
-                    if (!isPaused) {
-                        val result = stateMachine.executeNextStep()
-                        
-                        _currentState.value = result.state.name
-                        _statistics.value = stateMachine.getStatistics()
-                        updateProgress(result.message)
-                        
-                        if (!result.success) {
-                            _lastError.value = result.message
-                            if (debugMode) {
-                                updateProgress("ERROR: ${result.message}")
-                            }
-                        }
-                        
-                        delay(result.delay + RandomizationHelper.getRandomDelay())
-                        
-                        if (debugMode && stateMachine.getStatistics().priceUpdates >= 1) {
-                            updateProgress("DEBUG MODE: Stopped after 1 item")
-                            delay(3000)
-                            stopAutomation()
-                            break
-                        }
-                        
-                        if (result.state == AutomationState.COMPLETED ||
-                            result.state == AutomationState.STOPPED) {
-                            break
-                        }
-                    } else {
-                        delay(500)
+                val database = CalibrationDatabase.getInstance(applicationContext)
+                var calibration = database.calibrationDao().getCalibration() ?: CalibrationData()
+                
+                val maxItemsCreate = sharedPreferences.getInt(PREF_MAX_ITEMS_CREATE, -1)
+                val maxOrdersEdit = sharedPreferences.getInt(PREF_MAX_ORDERS_EDIT, -1)
+                
+                if (maxItemsCreate > 0 || maxOrdersEdit > 0) {
+                    calibration = calibration.copy(
+                        createMode = calibration.createMode.copy(
+                            maxItemsToProcess = if (maxItemsCreate > 0) maxItemsCreate else calibration.createMode.maxItemsToProcess
+                        ),
+                        editMode = calibration.editMode.copy(
+                            maxOrdersToEdit = if (maxOrdersEdit > 0) maxOrdersEdit else calibration.editMode.maxOrdersToEdit
+                        )
+                    )
+                }
+                
+                if (debugMode) {
+                    calibration = calibration.copy(
+                        createMode = calibration.createMode.copy(maxItemsToProcess = 1),
+                        editMode = calibration.editMode.copy(maxOrdersToEdit = 1)
+                    )
+                }
+                
+                currentCalibration = calibration
+
+                val accessibilityService = MarketAccessibilityService.getInstance()
+
+                if (accessibilityService == null) {
+                    showToast("❌ Accessibility Service not available")
+                    updateNotification("Error", "Service not available")
+                    return@launch
+                }
+
+                accessibilityService.setCalibration(calibration)
+
+                stateMachine?.stop()
+                stateMachine = StateMachine(
+                    scope = serviceScope,
+                    calibration = calibration,
+                    accessibilityService = accessibilityService,
+                    context = this@AutomationForegroundService,
+                    debugMode = debugMode
+                )
+
+                stateMachine?.onStateChange = { state ->
+                    val modeText = when (mode) {
+                        OperationMode.NEW_ORDER_SWEEPER -> "CREATE"
+                        OperationMode.ORDER_EDITOR -> "EDIT"
+                        OperationMode.IDLE -> "IDLE"
                     }
                     
-                    updateNotification()
+                    val statusText = "${state.stateType.name}"
+                    val subText = "Items: ${state.itemsProcessed}"
+                    
+                    updateNotification("$modeText: $statusText", subText)
+                    floatingOverlayManager?.updateStatus(statusText)
+                    floatingOverlayManager?.updateProgress(state.itemsProcessed, 
+                        if (mode == OperationMode.NEW_ORDER_SWEEPER) calibration.createMode.maxItemsToProcess 
+                        else calibration.editMode.maxOrdersToEdit)
+                    
+                    state.errorMessage?.let { error ->
+                        if (error.contains("FAILED") || error.contains("ERROR")) {
+                            showErrorDialog(error)
+                        }
+                    }
                 }
+
+                stateMachine?.onError = { error ->
+                    showErrorDialog(error)
+                    floatingOverlayManager?.updateStatus("ERROR")
+                }
+
+                stateMachine?.onPriceSanityError = { error ->
+                    showToast("⚠️ SAFETY: $error")
+                    floatingOverlayManager?.updateStatus("SAFETY HALT")
+                    stateMachine?.pause()
+                }
+
+                stateMachine?.onEndOfList = {
+                    showToast("✅ All items processed!")
+                    floatingOverlayManager?.updateStatus("COMPLETE")
+                }
+
+                stateMachine?.onProgressUpdate = { processed, total ->
+                    floatingOverlayManager?.updateProgress(processed, total)
+                }
+
+                stateMachine?.onScreenshotRequest = {
+                    accessibilityService.captureScreen()
+                }
+
+                stateMachine?.onStepUpdate = { step ->
+                    updateNotification(step, "Mode: ${mode.name}")
+                }
+
+                stateMachine?.startMode(mode)
+
+                val modeName = when (mode) {
+                    OperationMode.NEW_ORDER_SWEEPER -> "CREATE BUY ORDER"
+                    OperationMode.ORDER_EDITOR -> "EDIT BUY ORDER"
+                    OperationMode.IDLE -> "IDLE"
+                }
+
+                val debugText = if (debugMode) " [DEBUG - 1 item only]" else ""
+                showToast("✅ $modeName started$debugText")
+                updateNotification("Running: $modeName$debugText", "Initializing...")
+                floatingOverlayManager?.show()
+                floatingOverlayManager?.updateStatus("Running")
+
+                Log.d(TAG, "Automation mode started: $mode, debug=$debugMode")
+
             } catch (e: Exception) {
-                _lastError.value = "Automation error: ${e.message}"
-                updateProgress("ERROR: ${e.message}")
+                val errorMsg = "HANDLE_ERROR_POPUP\nStart failed: ${e.message}\nScreen: Check device settings"
+                showErrorDialog(errorMsg)
+                Log.e(TAG, "Error starting automation", e)
+                updateNotification("Error", e.message ?: "Unknown error")
             }
         }
     }
-    
-    private fun stopAutomation() {
-        _isRunning.value = false
-        automationJob?.cancel()
-        automationJob = null
-        scope?.cancel()
-        scope = null
-        
-        virtualDisplay?.release()
-        virtualDisplay = null
-        
-        imageReader?.close()
-        imageReader = null
-        
-        mediaProjection?.stop()
-        mediaProjection = null
-        
-        _currentState.value = "STOPPED"
+
+    private fun showErrorDialog(error: String) {
+        showToast("❌ $error")
+        Log.e(TAG, "═══════════════════════════════════════")
+        Log.e(TAG, error)
+        Log.e(TAG, "═══════════════════════════════════════")
     }
-    
-    private fun setupImageReader() {
-        imageReader = ImageReader.newInstance(
-            screenWidth, screenHeight,
-            PixelFormat.RGBA_8888, 2
-        )
-        
-        imageReader?.setOnImageAvailableListener({ reader ->
-            val image: Image? = reader.acquireLatestImage()
-            image?.let {
-                processImage(it)
-                it.close()
+
+    private fun showStatisticsToast() {
+        val stats = stateMachine?.getStatistics() ?: return
+        val lastStep = stateMachine?.getLastStep() ?: "N/A"
+        val message = buildString {
+            append("Items: ${stats.successfulOperations}")
+            append(" | Errors: ${stats.consecutiveErrors}")
+            if (stats.lastPrice != null) {
+                append(" | Last Price: ${stats.lastPrice}")
             }
-        }, Handler(Looper.getMainLooper()))
-        
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            screenWidth, screenHeight, screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface, null, null
+            append("\nLast Step: $lastStep")
+        }
+        showToast(message)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Albion Market Assistant",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Albion Market Automation Service"
+            }
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(status: String, subText: String): Notification {
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🛒 Albion Market Assistant")
+            .setContentText(status)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setSilent(true)
+            .setSubText(subText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(status))
+            .build()
     }
-    
-    private fun processImage(image: Image) {
-        // Process captured screen image for OCR and color detection
+
+    private fun updateNotification(status: String, subText: String) {
+        try {
+            val notification = createNotification(status, subText)
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating notification", e)
+        }
     }
-    
-    private fun updateProgress(message: String) {
-        _progress.value = message
-    }
-    
-    private fun updateNotification() {
-        notificationManager.notify(NOTIFICATION_ID, createNotification())
-    }
-    
-    fun setCalibrationData(data: CalibrationData) {
-        calibrationData = data
-        stateMachine.updateCalibration(data)
-    }
-    
-    fun setRandomizationSettings(settings: RandomizationSettings) {
-        randomizationSettings = settings
-        RandomizationHelper.initialize(settings)
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 }
