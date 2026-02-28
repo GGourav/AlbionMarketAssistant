@@ -99,11 +99,11 @@ object RandomizationHelper {
         endY: Float,
         screenWidth: Int,
         screenHeight: Int
-    ): Quadruple<Float, Float, Float, Float> {
+    ): List<Float> {
         val (rx1, ry1) = randomizeCoordinate(startX, startY, screenWidth, screenHeight)
         val (rx2, ry2) = randomizeCoordinate(endX, endY, screenWidth, screenHeight)
         
-        return Quadruple(rx1, ry1, rx2, ry2)
+        return listOf(rx1, ry1, rx2, ry2)
     }
     
     fun getBezierControlPoints(
