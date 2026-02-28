@@ -16,7 +16,6 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Singleton OCR Engine using ML Kit
- * Fixed: Now uses singleton pattern to avoid creating multiple recognizers
  */
 object OCREngine {
     
@@ -31,7 +30,6 @@ object OCREngine {
         var croppedBitmap: Bitmap? = null
         
         try {
-            // Validate region bounds
             val x = maxOf(0, region.left)
             val y = maxOf(0, region.top)
             val width = minOf(region.right - x, bitmap.width - x)
@@ -41,7 +39,6 @@ object OCREngine {
                 return@withContext emptyList()
             }
             
-            // Validate bitmap is not recycled
             if (bitmap.isRecycled) {
                 return@withContext emptyList()
             }
@@ -174,9 +171,6 @@ object OCREngine {
         return null
     }
     
-    /**
-     * Close the recognizer when app is shutting down
-     */
     fun close() {
         try {
             recognizer.close()
