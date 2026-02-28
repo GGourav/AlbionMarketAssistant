@@ -3,8 +3,6 @@ package com.albion.marketassistant.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
-import androidx.room.Embedded
-import androidx.room.Relation
 
 /**
  * Room Entity for storing calibration data
@@ -40,16 +38,15 @@ data class CalibrationData(
     val swipeEndX: Float = 0.5f,
     val swipeEndY: Float = 0.35f,
     
-    // EDIT mode coordinates (percentage-based 0.0-1.0)
+    // EDIT mode coordinates
     val editButtonX: Float = 0.85f,
     val editButtonY: Float = 0.25f,
     val priceInputX: Float = 0.5f,
     val priceInputY: Float = 0.45f,
     val updateButtonX: Float = 0.75f,
     val updateButtonY: Float = 0.55f,
-    // Reuse confirmYesX, confirmYesY, closeButtonX, closeButtonY from CREATE mode
     
-    // OCR Region for EDIT mode (same as CREATE by default)
+    // OCR Region for EDIT mode
     val editOcrRegionLeft: Float = 0.55f,
     val editOcrRegionTop: Float = 0.22f,
     val editOcrRegionRight: Float = 0.75f,
@@ -64,8 +61,36 @@ data class CalibrationData(
     val loopDelayMs: Long = 500,
     val gestureDurationMs: Long = 200,
     
-    // Last updated timestamp
     val lastUpdated: Long = System.currentTimeMillis()
+)
+
+/**
+ * Price history entry for tracking price changes
+ */
+@Entity(tableName = "price_history")
+data class PriceHistoryEntry(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val itemId: String,
+    val price: Int,
+    val timestamp: Long = System.currentTimeMillis(),
+    val sessionId: Long = 0,
+    val cityName: String = ""
+)
+
+/**
+ * Session log entry for tracking automation sessions
+ */
+@Entity(tableName = "session_logs")
+data class SessionLogEntry(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val sessionStart: Long,
+    var sessionEnd: Long = 0,
+    var itemsProcessed: Int = 0,
+    var profitSilver: Long = 0,
+    var status: String = "RUNNING",
+    var errorMessage: String = ""
 )
 
 /**
@@ -102,9 +127,6 @@ data class SessionStatistics(
     }
 }
 
-/**
- * Color detection result for item validation
- */
 data class ColorDetectionResult(
     val isValid: Boolean,
     val detectedColor: String,
@@ -115,18 +137,12 @@ data class ColorDetectionResult(
     val regionHeight: Int
 )
 
-/**
- * OCR result with confidence score
- */
 data class OcrResult(
     val text: String,
     val confidence: Float,
     val boundingBox: BoundingBox? = null
 )
 
-/**
- * Bounding box for OCR regions
- */
 data class BoundingBox(
     val left: Int,
     val top: Int,
@@ -134,9 +150,6 @@ data class BoundingBox(
     val bottom: Int
 )
 
-/**
- * Automation state for state machine
- */
 enum class AutomationState {
     IDLE,
     INITIALIZING,
@@ -152,17 +165,11 @@ enum class AutomationState {
     STOPPED
 }
 
-/**
- * Automation mode
- */
 enum class AutomationMode {
     CREATE_BUY_ORDER,
     EDIT_BUY_ORDER
 }
 
-/**
- * Result of a single automation step
- */
 data class StepResult(
     val success: Boolean,
     val state: AutomationState,
@@ -171,18 +178,12 @@ data class StepResult(
     val delay: Long = 0
 )
 
-/**
- * Price calculation result
- */
 data class PriceResult(
     val originalPrice: Int,
     val newPrice: Int,
     val profitEstimate: Long = 0
 )
 
-/**
- * Log entry for debugging
- */
 data class LogEntry(
     val timestamp: Long = System.currentTimeMillis(),
     val level: LogLevel,
@@ -194,36 +195,6 @@ enum class LogLevel {
     DEBUG, INFO, WARN, ERROR
 }
 
-/**
- * Room Entity for session history
- */
-@Entity(tableName = "session_history")
-data class SessionHistory(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val startTime: Long,
-    val endTime: Long,
-    val mode: String,
-    val itemsProcessed: Int,
-    val totalProfit: Long,
-    val averageCycleTime: Long
-)
-
-/**
- * Room Entity for item cache
- */
-@Entity(tableName = "item_cache")
-data class ItemCache(
-    @PrimaryKey
-    val itemName: String,
-    val lastPrice: Int,
-    val lastUpdated: Long,
-    val category: String = ""
-)
-
-/**
- * Settings configuration
- */
 data class AppSettings(
     val debugMode: Boolean = false,
     val autoStart: Boolean = false,
@@ -232,21 +203,15 @@ data class AppSettings(
     val soundEnabled: Boolean = false
 )
 
-/**
- * Coordinate point with percentage values
- */
 data class CoordinatePoint(
-    val x: Float,  // 0.0 - 1.0 percentage
-    val y: Float   // 0.0 - 1.0 percentage
+    val x: Float,
+    val y: Float
 ) {
     fun toAbsolute(screenWidth: Int, screenHeight: Int): Pair<Int, Int> {
         return (x * screenWidth).toInt() to (y * screenHeight).toInt()
     }
 }
 
-/**
- * Gesture result for tracking
- */
 data class GestureResult(
     val success: Boolean,
     val gestureType: GestureType,
@@ -262,9 +227,6 @@ enum class GestureType {
     DRAG
 }
 
-/**
- * Set price result for detailed error tracking
- */
 data class SetPriceResult(
     val success: Boolean,
     val errorMessage: String = "",
