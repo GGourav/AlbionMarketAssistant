@@ -6,17 +6,15 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- Title -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="🛒 Albion Market Assistant"
+        android:text="Albion Market Assistant"
         android:textSize="24sp"
         android:textStyle="bold"
         android:textColor="@color/primary"
         android:layout_marginBottom="16dp"/>
 
-    <!-- Status Card -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,7 +31,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📋 Status"
+                android:text="Status"
                 android:textSize="16sp"
                 android:textStyle="bold"/>
 
@@ -65,7 +63,6 @@
 
     </androidx.cardview.widget.CardView>
 
-    <!-- DEBUG MODE Card -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -83,7 +80,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🐛 DEBUG MODE"
+                android:text="DEBUG MODE"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="#E65100"/>
@@ -131,7 +128,6 @@
 
     </androidx.cardview.widget.CardView>
 
-    <!-- Quick Actions Card -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -148,7 +144,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⚡ Quick Actions"
+                android:text="Quick Actions"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp"/>
@@ -163,7 +159,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="🟢 Create Orders"
+                    android:text="Create Orders"
                     android:layout_marginEnd="8dp"/>
 
                 <Button
@@ -171,7 +167,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="🔵 Edit Orders"
+                    android:text="Edit Orders"
                     android:backgroundTint="@color/accent_secondary"/>
 
             </LinearLayout>
@@ -180,7 +176,7 @@
                 android:id="@+id/btnStop"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="⏹ Stop Automation"
+                android:text="Stop Automation"
                 android:backgroundTint="@color/error"
                 android:layout_marginTop="8dp"/>
 
@@ -188,7 +184,7 @@
                 android:id="@+id/btnRequestScreenCapture"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="📺 Grant Screen Capture"
+                android:text="Grant Screen Capture"
                 android:backgroundTint="@color/warning"
                 android:layout_marginTop="8dp"/>
 
@@ -196,75 +192,6 @@
 
     </androidx.cardview.widget.CardView>
 
-    <!-- Instructions Card -->
-    <androidx.cardview.widget.CardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="4dp"
-        app:cardUseCompatPadding="true">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📋 Setup Instructions"
-                android:textSize="16sp"
-                android:textStyle="bold"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="1. Grant Accessibility permission below"
-                android:textSize="13sp"
-                android:layout_marginTop="8dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="2. Grant Overlay permission to show controls"
-                android:textSize="13sp"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="3. Grant Screen Capture for OCR to work"
-                android:textSize="13sp"
-                android:textColor="#FF5722"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="4. Open Settings to configure coordinates"
-                android:textSize="13sp"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="5. Open Albion Online market"
-                android:textSize="13sp"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="6. Press Create/Edit to start automation"
-                android:textSize="13sp"
-                android:layout_marginTop="4dp"/>
-
-        </LinearLayout>
-
-    </androidx.cardview.widget.CardView>
-
-    <!-- Bottom Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -276,7 +203,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="♿ Accessibility"
+            android:text="Accessibility"
             android:backgroundTint="@color/warning"
             android:layout_marginEnd="8dp"/>
 
@@ -285,7 +212,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="⚙️ Settings"
+            android:text="Settings"
             android:backgroundTint="@color/primary_dark"/>
 
     </LinearLayout>
