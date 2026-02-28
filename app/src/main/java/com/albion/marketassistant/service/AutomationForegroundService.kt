@@ -1,3 +1,6 @@
+// FILE: app/src/main/java/com/albion/marketassistant/service/AutomationForegroundService.kt
+// UPDATED: Works with new percentage-based automation
+
 package com.albion.marketassistant.service
 
 import android.app.Notification
@@ -18,12 +21,10 @@ import androidx.core.app.NotificationCompat
 import com.albion.marketassistant.R
 import com.albion.marketassistant.accessibility.MarketAccessibilityService
 import com.albion.marketassistant.accessibility.StateMachine
-import com.albion.marketassistant.accessibility.UIInteractor
 import com.albion.marketassistant.data.*
 import com.albion.marketassistant.db.CalibrationDatabase
 import com.albion.marketassistant.ui.MainActivity
 import com.albion.marketassistant.ui.overlay.FloatingOverlayManager
-import com.albion.marketassistant.util.DeviceUtils
 import kotlinx.coroutines.*
 
 class AutomationForegroundService : Service() {
@@ -33,17 +34,12 @@ class AutomationForegroundService : Service() {
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "AlbionAssistant"
 
-        const val ACTION_START_MODE = "com.albion.START_MODE"
-        const val ACTION_STOP_MODE = "com.albion.STOP_MODE"
-        const val ACTION_ACCESSIBILITY_READY = "com.albion.ACCESSIBILITY_READY"
         const val ACTION_CREATE_MODE = "com.albion.CREATE_MODE"
         const val ACTION_EDIT_MODE = "com.albion.EDIT_MODE"
+        const val ACTION_STOP_MODE = "com.albion.STOP_MODE"
         const val ACTION_PAUSE = "com.albion.PAUSE"
         const val ACTION_RESUME = "com.albion.RESUME"
-        const val ACTION_RESET_ESCAPE = "com.albion.RESET_ESCAPE"
-        const val ACTION_EXPORT_STATS = "com.albion.EXPORT_STATS"
-        const val ACTION_TOGGLE_OVERLAY = "com.albion.TOGGLE_OVERLAY"
-        const val EXTRA_MODE = "mode"
+        const val ACTION_ACCESSIBILITY_READY = "com.albion.ACCESSIBILITY_READY"
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -52,8 +48,6 @@ class AutomationForegroundService : Service() {
     private var pendingMode: OperationMode? = null
     private var currentMode: OperationMode? = null
     private var floatingOverlayManager: FloatingOverlayManager? = null
-    private var deviceUtils: DeviceUtils? = null
-    private var statsUpdateJob: Job? = null
     private var currentCalibration: CalibrationData? = null
 
     private val broadcastReceiver = object : BroadcastReceiver() {
@@ -61,7 +55,7 @@ class AutomationForegroundService : Service() {
             when (intent?.action) {
                 ACTION_ACCESSIBILITY_READY -> {
                     isAccessibilityReady = true
-                    showToast("Accessibility Service Ready")
+                    showToast("✓ Accessibility Service Ready")
                     pendingMode?.let { mode ->
                         startAutomationMode(mode)
                         pendingMode = null
@@ -84,29 +78,23 @@ class AutomationForegroundService : Service() {
         }
 
         isAccessibilityReady = MarketAccessibilityService.isServiceEnabled()
-        deviceUtils = DeviceUtils(this)
 
         floatingOverlayManager = FloatingOverlayManager(this) { action ->
             handleOverlayAction(action)
         }
 
-        startForeground(NOTIFICATION_ID, createNotification("Ready", null))
-        startBatteryMonitoring()
+        startForeground(NOTIFICATION_ID, createNotification("Ready", "Tap Create or Edit to start"))
         Log.d(TAG, "Service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.let {
             when (it.action) {
-                ACTION_START_MODE -> handleStartMode(intent)
-                ACTION_STOP_MODE -> handleStopMode()
                 ACTION_CREATE_MODE -> handleCreateMode()
                 ACTION_EDIT_MODE -> handleEditMode()
+                ACTION_STOP_MODE -> handleStopMode()
                 ACTION_PAUSE -> handlePause()
                 ACTION_RESUME -> handleResume()
-                ACTION_RESET_ESCAPE -> handleResetEscape()
-                ACTION_EXPORT_STATS -> handleExportStats()
-                ACTION_TOGGLE_OVERLAY -> handleToggleOverlay()
             }
         }
         return START_STICKY
@@ -118,7 +106,6 @@ class AutomationForegroundService : Service() {
         Log.d(TAG, "Service destroying")
         stateMachine?.stop()
         floatingOverlayManager?.hide()
-        statsUpdateJob?.cancel()
         serviceScope.cancel()
         try {
             unregisterReceiver(broadcastReceiver)
@@ -136,83 +123,53 @@ class AutomationForegroundService : Service() {
             "RESUME" -> handleResume()
             "STOP" -> handleStopMode()
             "STATS" -> showStatisticsToast()
-            "EXPORT" -> handleExportStats()
         }
-    }
-
-    private fun handleStartMode(intent: Intent) {
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getSerializableExtra(EXTRA_MODE, OperationMode::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getSerializableExtra(EXTRA_MODE) as? OperationMode
-        } ?: return
-
-        if (!Settings.canDrawOverlays(this)) {
-            showToast("Please allow 'Display over other apps' permission")
-            return
-        }
-
-        if (!isAccessibilityReady && !MarketAccessibilityService.isServiceEnabled()) {
-            showToast("Please enable Accessibility Service in Settings")
-            pendingMode = mode
-            return
-        }
-
-        isAccessibilityReady = true
-        startAutomationMode(mode)
     }
 
     private fun handleCreateMode() {
         if (!checkPermissions()) return
+        
         currentMode = OperationMode.NEW_ORDER_SWEEPER
+        showToast("🟢 Create Buy Order Mode Starting...")
         startAutomationMode(OperationMode.NEW_ORDER_SWEEPER)
-        showToast("Create Order mode started")
     }
 
     private fun handleEditMode() {
         if (!checkPermissions()) return
+        
         currentMode = OperationMode.ORDER_EDITOR
+        showToast("🔵 Edit Buy Order Mode Starting...")
         startAutomationMode(OperationMode.ORDER_EDITOR)
-        showToast("Edit Order mode started")
     }
 
     private fun handlePause() {
         stateMachine?.pause()
         floatingOverlayManager?.updateStatus("PAUSED")
-        updateNotification("Paused", null)
-        showToast("Paused")
+        updateNotification("Paused", "")
+        showToast("⏸ Paused")
     }
 
     private fun handleResume() {
         stateMachine?.resume()
         floatingOverlayManager?.updateStatus("Running")
-        showToast("Resumed")
+        showToast("▶ Resumed")
     }
 
-    private fun handleResetEscape() {
-        MarketAccessibilityService.getInstance()?.getUIInteractor()?.dismissKeyboard()
-        showToast("Reset - dismissing popups")
-    }
-
-    private fun handleExportStats() {
-        serviceScope.launch {
-            stateMachine?.exportSessionLog()
-            showToast("Stats exported")
-        }
-    }
-
-    private fun handleToggleOverlay() {
-        if (floatingOverlayManager?.isVisible() == true) {
-            floatingOverlayManager?.hide()
-        } else {
-            floatingOverlayManager?.show()
-        }
+    private fun handleStopMode() {
+        stateMachine?.stop()
+        stateMachine = null
+        currentMode = null
+        pendingMode = null
+        currentCalibration = null
+        floatingOverlayManager?.hide()
+        showToast("⏹ Stopped")
+        updateNotification("Ready", "Tap Create or Edit to start")
+        Log.d(TAG, "Automation stopped")
     }
 
     private fun checkPermissions(): Boolean {
         if (!Settings.canDrawOverlays(this)) {
-            showToast("Please allow 'Display over other apps' permission")
+            showToast("Please grant 'Display over other apps' permission")
             return false
         }
 
@@ -236,141 +193,86 @@ class AutomationForegroundService : Service() {
                 val accessibilityService = MarketAccessibilityService.getInstance()
 
                 if (accessibilityService == null) {
-                    showToast("Accessibility Service not available")
-                    updateNotification("Error: Service not available", null)
+                    showToast("❌ Accessibility Service not available")
+                    updateNotification("Error", "Service not available")
                     return@launch
                 }
 
                 // Pass calibration to the accessibility service
                 accessibilityService.setCalibration(calibration)
 
-                val uiInteractor: UIInteractor = accessibilityService.getUIInteractor()
-
+                // Create state machine
                 stateMachine?.stop()
-                stateMachine = StateMachine(serviceScope, calibration, uiInteractor, this@AutomationForegroundService)
+                stateMachine = StateMachine(serviceScope, calibration, accessibilityService, this@AutomationForegroundService)
 
+                // Setup callbacks
                 stateMachine?.onStateChange = { state ->
-                    updateNotification("${mode.name}: ${state.stateType}", state.statistics)
-
-                    floatingOverlayManager?.updateStatus(
-                        when (state.stateType) {
-                            StateType.PAUSED -> "PAUSED"
-                            StateType.ERROR_PRICE_SANITY -> "PRICE ERROR!"
-                            StateType.ERROR_END_OF_LIST -> "END OF LIST"
-                            StateType.ERROR_BATTERY_LOW -> "LOW BATTERY"
-                            StateType.RECOVERING -> "RECOVERING..."
-                            else -> state.stateType.name
-                        }
-                    )
-
-                    floatingOverlayManager?.updateStatistics(state.statistics)
-
-                    when (state.stateType) {
-                        StateType.ERROR_PRICE_SANITY -> {
-                            showToast("PRICE SANITY ERROR: ${state.errorMessage}")
-                            floatingOverlayManager?.updateStatus("PRICE ERROR!")
-                        }
-                        StateType.ERROR_END_OF_LIST -> showToast("End of list reached!")
-                        StateType.ERROR_BATTERY_LOW -> showToast("Battery too low - paused")
-                        else -> {}
+                    val modeText = when (mode) {
+                        OperationMode.NEW_ORDER_SWEEPER -> "CREATE"
+                        OperationMode.ORDER_EDITOR -> "EDIT"
+                        OperationMode.IDLE -> "IDLE"
                     }
+                    updateNotification("$modeText: ${state.stateType}", "Items: ${state.itemsProcessed}")
+                    floatingOverlayManager?.updateStatus(state.stateType.name)
+                    floatingOverlayManager?.updateProgress(state.itemsProcessed, state.statistics.successfulOperations)
                 }
 
                 stateMachine?.onError = { error ->
-                    showToast("Error: $error")
-                    floatingOverlayManager?.updateStatus("Error")
+                    showToast("❌ Error: $error")
+                    floatingOverlayManager?.updateStatus("ERROR")
                 }
 
                 stateMachine?.onPriceSanityError = { error ->
-                    showToast("SAFETY HALT: $error")
+                    showToast("⚠️ SAFETY: $error")
                     floatingOverlayManager?.updateStatus("SAFETY HALT")
                     stateMachine?.pause()
                 }
 
                 stateMachine?.onEndOfList = {
-                    showToast("Completed all items!")
+                    showToast("✅ All items processed!")
                     floatingOverlayManager?.updateStatus("COMPLETE")
                 }
 
-                stateMachine?.onStatisticsUpdate = { stats ->
-                    floatingOverlayManager?.updateStatistics(stats)
+                stateMachine?.onProgressUpdate = { processed, total ->
+                    floatingOverlayManager?.updateProgress(processed, total)
                 }
 
-                stateMachine?.startMode(mode)
-                currentMode = mode
-                showToast("$mode started")
-                updateNotification("Running: $mode", null)
+                stateMachine?.onScreenshotRequest = {
+                    accessibilityService.captureScreen()
+                }
 
+                // Start automation
+                stateMachine?.startMode(mode)
+
+                val modeName = when (mode) {
+                    OperationMode.NEW_ORDER_SWEEPER -> "CREATE BUY ORDER"
+                    OperationMode.ORDER_EDITOR -> "EDIT BUY ORDER"
+                    OperationMode.IDLE -> "IDLE"
+                }
+
+                showToast("✅ $modeName started")
+                updateNotification("Running: $modeName", "Initializing...")
                 floatingOverlayManager?.show()
                 floatingOverlayManager?.updateStatus("Running")
-
-                startStatisticsUpdates()
 
                 Log.d(TAG, "Automation mode started: $mode")
 
             } catch (e: Exception) {
-                showToast("Error: ${e.message}")
+                showToast("❌ Error: ${e.message}")
                 Log.e(TAG, "Error starting automation", e)
-                updateNotification("Error: ${e.message}", null)
+                updateNotification("Error", e.message ?: "Unknown error")
             }
         }
-    }
-
-    private fun startStatisticsUpdates() {
-        statsUpdateJob?.cancel()
-        statsUpdateJob = serviceScope.launch {
-            while (true) {
-                delay(5000)
-                stateMachine?.getStatistics()?.let { stats ->
-                    floatingOverlayManager?.updateStatistics(stats)
-                }
-            }
-        }
-    }
-
-    private fun startBatteryMonitoring() {
-        serviceScope.launch {
-            while (true) {
-                delay(30000)
-
-                val batterySettings = currentCalibration?.battery 
-                    ?: CalibrationData().battery
-
-                if (batterySettings.enableBatteryOptimization) {
-                    deviceUtils?.let { utils ->
-                        if (utils.isBatteryLow(batterySettings.pauseOnBatteryBelow) && !utils.isCharging()) {
-                            if (stateMachine != null && !stateMachine!!.isPaused()) {
-                                showToast("Battery low (${utils.getBatteryPercentage()}%) - pausing")
-                                stateMachine?.pause()
-                                floatingOverlayManager?.updateStatus("LOW BATTERY")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun handleStopMode() {
-        stateMachine?.stop()
-        stateMachine = null
-        currentMode = null
-        pendingMode = null
-        currentCalibration = null
-        statsUpdateJob?.cancel()
-        floatingOverlayManager?.hide()
-        showToast("Stopped")
-        updateNotification("Ready", null)
-        Log.d(TAG, "Automation stopped")
     }
 
     private fun showStatisticsToast() {
         val stats = stateMachine?.getStatistics() ?: return
         val message = buildString {
-            append("Cycles: ${stats.totalCycles}")
-            append(" | Success: ${stats.successfulOperations}")
-            append(" | Failed: ${stats.failedOperations}")
-            append(" | Rate: ${(stats.getSuccessRate() * 100).toInt()}%")
+            append("Items: ${stats.successfulOperations}")
+            append(" | Errors: ${stats.consecutiveErrors}")
+            if (stats.lastPrice != null) {
+                append(" | Last Price: ${stats.lastPrice}")
+            }
         }
         showToast(message)
     }
@@ -379,41 +281,36 @@ class AutomationForegroundService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Albion Assistant",
+                "Albion Market Assistant",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Albion Market Assistant Service"
+                description = "Albion Market Automation Service"
             }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
-    private fun createNotification(status: String, stats: SessionStatistics?): Notification {
+    private fun createNotification(status: String, subText: String): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Albion Market Assistant")
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🛒 Albion Market Assistant")
             .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
-
-        stats?.let { s ->
-            val statsText = "OK:${s.successfulOperations} FAIL:${s.failedOperations} | ${(s.getSuccessRate() * 100).toInt()}%"
-            builder.setSubText(statsText)
-        }
-
-        return builder.build()
+            .setSubText(subText)
+            .build()
     }
 
-    private fun updateNotification(status: String, stats: SessionStatistics?) {
+    private fun updateNotification(status: String, subText: String) {
         try {
-            val notification = createNotification(status, stats)
+            val notification = createNotification(status, subText)
             getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             Log.e(TAG, "Error updating notification", e)
