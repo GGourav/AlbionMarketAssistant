@@ -6,8 +6,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.albion.marketassistant.R
 import com.albion.marketassistant.data.CalibrationData
-import com.albion.marketassistant.database.AppDatabase
-import com.albion.marketassistant.database.CalibrationDao
+import com.albion.marketassistant.db.CalibrationDatabase
+import com.albion.marketassistant.db.CalibrationDao
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
 
@@ -73,7 +73,7 @@ class CalibrationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
         
-        calibrationDao = AppDatabase.getInstance(this).calibrationDao()
+        calibrationDao = CalibrationDatabase.getInstance(this).calibrationDao()
         
         initViews()
         setupTabs()
@@ -164,7 +164,7 @@ class CalibrationActivity : AppCompatActivity() {
     private fun loadCalibrationData() {
         lifecycleScope.launch {
             try {
-                val data = calibrationDao.getLatest()
+                val data = calibrationDao.getCalibration()
                 if (data != null) {
                     currentData = data
                     populateFields(data)
@@ -268,7 +268,7 @@ class CalibrationActivity : AppCompatActivity() {
             
             lifecycleScope.launch {
                 try {
-                    calibrationDao.insert(data)
+                    calibrationDao.insertCalibration(data)
                     currentData = data
                     Toast.makeText(this@CalibrationActivity, "Calibration saved!", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
