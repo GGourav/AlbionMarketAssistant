@@ -1,6 +1,3 @@
-// FILE: app/src/main/java/com/albion/marketassistant/ui/settings/CalibrationActivity.kt
-// UPDATED: Percentage-based calibration settings
-
 package com.albion.marketassistant.ui.settings
 
 import android.os.Bundle
