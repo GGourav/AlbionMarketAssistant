@@ -1,96 +1,82 @@
 package com.albion.marketassistant.data
 
+import android.graphics.Rect
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Embedded
-import android.graphics.Rect
 
 /**
  * Configuration for Create Buy Order mode
+ * MODE 1: FAST LOOP - Tap + button to outbid
  */
 data class CreateModeConfig(
-    val buyOrderButtonXPercent: Double = 0.82,
-    val firstRowYPercent: Double = 0.35,
-    val rowYOffsetPercent: Double = 0.10,
-    val maxRowsPerScreen: Int = 6,
-    
-    val plusButtonXPercent: Double = 0.78,
-    val plusButtonYPercent: Double = 0.62,
-    
-    val confirmButtonXPercent: Double = 0.75,
-    val confirmButtonYPercent: Double = 0.88,
-    
-    val scrollStartYPercent: Double = 0.75,
-    val scrollEndYPercent: Double = 0.35,
-    val scrollXPercent: Double = 0.50,
-    
+    val firstRowX: Int = 100,
+    val firstRowY: Int = 300,
+    val rowYOffset: Int = 80,
+    val maxRowsPerScreen: Int = 5,
+    val plusButtonX: Int = 350,
+    val plusButtonY: Int = 450,
+    val createButtonX: Int = 500,
+    val createButtonY: Int = 550,
+    val ocrRegionLeft: Int = 600,
+    val ocrRegionTop: Int = 200,
+    val ocrRegionRight: Int = 1050,
+    val ocrRegionBottom: Int = 500,
+    val confirmYesX: Int = 500,
+    val confirmYesY: Int = 600,
+    val closeButtonX: Int = 1000,
+    val closeButtonY: Int = 200,
     val hardPriceCap: Int = 100000,
-    val priceIncrement: Int = 1,
-    val maxItemsToProcess: Int = 50,
-    
-    val ocrRegionLeftPercent: Double = 0.30,
-    val ocrRegionTopPercent: Double = 0.40,
-    val ocrRegionRightPercent: Double = 0.70,
-    val ocrRegionBottomPercent: Double = 0.55
+    val priceIncrement: Int = 1
 ) {
-    fun getOCRRegion(screenWidth: Int, screenHeight: Int): Rect = Rect(
-        (screenWidth * ocrRegionLeftPercent).toInt(),
-        (screenHeight * ocrRegionTopPercent).toInt(),
-        (screenWidth * ocrRegionRightPercent).toInt(),
-        (screenHeight * ocrRegionBottomPercent).toInt()
-    )
+    fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
 }
 
 /**
  * Configuration for Edit Buy Order mode
+ * MODE 2: READ & TYPE LOOP - OCR price, inject new price
  */
 data class EditModeConfig(
-    val myOrdersTabXPercent: Double = 0.90,
-    val myOrdersTabYPercent: Double = 0.13,
-    
-    val editButtonXPercent: Double = 0.85,
-    val editButtonYPercent: Double = 0.55,
-    
-    val priceFieldXPercent: Double = 0.50,
-    val priceFieldYPercent: Double = 0.62,
-    
-    val updateButtonXPercent: Double = 0.75,
-    val updateButtonYPercent: Double = 0.88,
-    
-    val closeButtonXPercent: Double = 0.95,
-    val closeButtonYPercent: Double = 0.10,
-    
+    val editButtonX: Int = 950,
+    val editButtonY: Int = 300,
+    val priceInputX: Int = 300,
+    val priceInputY: Int = 400,
+    val updateButtonX: Int = 500,
+    val updateButtonY: Int = 550,
+    val ocrRegionLeft: Int = 600,
+    val ocrRegionTop: Int = 200,
+    val ocrRegionRight: Int = 1050,
+    val ocrRegionBottom: Int = 500,
+    val confirmYesX: Int = 500,
+    val confirmYesY: Int = 600,
+    val closeButtonX: Int = 1000,
+    val closeButtonY: Int = 200,
     val hardPriceCap: Int = 100000,
-    val priceIncrement: Int = 1,
-    val maxOrdersToEdit: Int = 20,
-    
-    val ocrRegionLeftPercent: Double = 0.30,
-    val ocrRegionTopPercent: Double = 0.40,
-    val ocrRegionRightPercent: Double = 0.70,
-    val ocrRegionBottomPercent: Double = 0.55
+    val priceIncrement: Int = 1
 ) {
-    fun getOCRRegion(screenWidth: Int, screenHeight: Int): Rect = Rect(
-        (screenWidth * ocrRegionLeftPercent).toInt(),
-        (screenHeight * ocrRegionTopPercent).toInt(),
-        (screenWidth * ocrRegionRightPercent).toInt(),
-        (screenHeight * ocrRegionBottomPercent).toInt()
-    )
+    fun getOCRRegion(): Rect = Rect(ocrRegionLeft, ocrRegionTop, ocrRegionRight, ocrRegionBottom)
 }
 
 /**
- * Global timing settings
+ * Global settings shared between modes
  */
 data class GlobalSettings(
-    val delayAfterTapMs: Long = 900,
-    val delayAfterSwipeMs: Long = 1200,
-    val delayAfterConfirmMs: Long = 1100,
-    val cycleCooldownMs: Long = 500,
-    
-    val tapDurationMs: Long = 80,
-    val swipeDurationMs: Long = 400,
-    
+    val swipeStartX: Int = 500,
+    val swipeStartY: Int = 600,
+    val swipeEndX: Int = 500,
+    val swipeEndY: Int = 300,
+    val swipeDurationMs: Int = 300,
+    val tapDurationMs: Long = 200,
+    val textInputDelayMs: Long = 200,
+    val popupOpenWaitMs: Long = 300,
+    val popupCloseWaitMs: Long = 400,
+    val confirmationWaitMs: Long = 400,
+    val ocrScanDelayMs: Long = 300,
+    val keyboardDismissDelayMs: Long = 300,
     val networkLagMultiplier: Float = 1.0f,
-    
+    val cycleCooldownMs: Long = 200,
+    val highlightedRowColorHex: String = "#E8E8E8",
+    val colorToleranceRGB: Int = 30,
     val ocrConfidenceThreshold: Float = 0.7f,
     val ocrLanguage: String = "en"
 )
@@ -99,6 +85,7 @@ data class GlobalSettings(
  * Safety settings
  */
 data class SafetySettings(
+    val maxPriceChangePercent: Float = 0.5f,
     val maxPriceCap: Int = 100000,
     val minPriceCap: Int = 1,
     val enableOcrSanityCheck: Boolean = true,
@@ -108,39 +95,99 @@ data class SafetySettings(
 )
 
 /**
- * Anti-detection settings
+ * Anti-Detection settings
  */
 data class AntiDetectionSettings(
     val enableRandomization: Boolean = true,
-    val randomDelayRangeMs: Long = 200,
-    val coordinateJitterPercent: Double = 0.02
+    val randomDelayRangeMs: Long = 100,
+    val randomSwipeDistancePercent: Float = 0.1f,
+    val randomizeGesturePath: Boolean = true,
+    val pathRandomizationPixels: Int = 5,
+    val minRandomDelayMs: Long = 50,
+    val maxRandomDelayMs: Long = 200
 )
 
 /**
- * End of list detection settings
+ * End of List Detection settings
  */
 data class EndOfListSettings(
     val enableEndOfListDetection: Boolean = true,
     val identicalPageThreshold: Int = 3,
-    val maxCyclesBeforeStop: Int = 500
+    val firstLineOcrLeft: Int = 100,
+    val firstLineOcrTop: Int = 300,
+    val firstLineOcrRight: Int = 900,
+    val firstLineOcrBottom: Int = 350,
+    val maxCyclesBeforeStop: Int = 500,
+    val textSimilarityThreshold: Float = 0.9f
+) {
+    fun getFirstLineOcrRegion(): Rect = Rect(firstLineOcrLeft, firstLineOcrTop, firstLineOcrRight, firstLineOcrBottom)
+}
+
+/**
+ * Immersive Mode settings
+ */
+data class ImmersiveModeSettings(
+    val enableWindowVerification: Boolean = false,
+    val gamePackageName: String = "com.albiononline",
+    val actionOnWindowLost: String = "ignore",
+    val windowCheckIntervalMs: Long = 999999999,
+    val windowLostThreshold: Int = 999,
+    val autoResumeOnReturn: Boolean = false
 )
 
 /**
- * Error recovery settings
+ * Swipe Overlap Calibration settings
+ */
+data class SwipeOverlapSettings(
+    val enableSwipeOverlap: Boolean = true,
+    val overlapRowCount: Int = 1,
+    val swipeSettleTimeMs: Long = 400,
+    val rowDetectionTolerance: Int = 10,
+    val enableScrollTracking: Boolean = true
+)
+
+/**
+ * Battery Optimization settings
+ */
+data class BatterySettings(
+    val enableBatteryOptimization: Boolean = true,
+    val pauseOnBatteryBelow: Int = 15,
+    val reduceOcrBelowPercent: Int = 30,
+    val lowBatteryOcrMultiplier: Float = 1.5f,
+    val dimScreenDuringAutomation: Boolean = false,
+    val dimBrightnessLevel: Int = 30
+)
+
+/**
+ * Error Recovery settings
  */
 data class ErrorRecoverySettings(
     val enableSmartRecovery: Boolean = true,
     val maxConsecutiveErrors: Int = 5,
     val maxStateStuckTimeMs: Long = 60000,
+    val actionOnStuck: String = "restart",
     val screenshotOnError: Boolean = true,
     val autoRestartAfterErrors: Int = 10,
     val autoRestartDelayMs: Long = 3000
 )
 
 /**
+ * Price History settings
+ */
+data class PriceHistorySettings(
+    val enablePriceHistory: Boolean = true,
+    val maxHistoryEntries: Int = 100,
+    val historyRetentionDays: Int = 7,
+    val priceTrendAlert: String = "both",
+    val trendAlertThreshold: Float = 0.1f,
+    val enableAnomalyDetection: Boolean = true
+)
+
+/**
  * Session Statistics
  */
 data class SessionStatistics(
+    val sessionStartTime: Long = System.currentTimeMillis(),
     val totalCycles: Int = 0,
     val successfulOperations: Int = 0,
     val failedOperations: Int = 0,
@@ -156,7 +203,7 @@ data class SessionStatistics(
     val consecutiveErrors: Int = 0,
     val lastState: String = "",
     val stateEnterTime: Long = 0,
-    val lastPrice: Int? = null
+    val lastDetectedPrice: Int? = null
 ) {
     fun getSuccessRate(): Float {
         val total = successfulOperations + failedOperations
@@ -175,20 +222,21 @@ data class SessionStatistics(
     }
 }
 
-/**
- * Room Entity for calibration data
- */
+// ============================================
+// ROOM DATABASE ENTITIES
+// ============================================
+
 @Entity(tableName = "calibration_data")
 data class CalibrationData(
     @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    
+    val id: Int = 0,
+
     @Embedded(prefix = "create_")
     val createMode: CreateModeConfig = CreateModeConfig(),
-    
+
     @Embedded(prefix = "edit_")
     val editMode: EditModeConfig = EditModeConfig(),
-    
+
     @Embedded(prefix = "global_")
     val global: GlobalSettings = GlobalSettings(),
     
@@ -201,159 +249,155 @@ data class CalibrationData(
     @Embedded(prefix = "endoflist_")
     val endOfList: EndOfListSettings = EndOfListSettings(),
     
+    @Embedded(prefix = "immersive_")
+    val immersiveMode: ImmersiveModeSettings = ImmersiveModeSettings(),
+    
+    @Embedded(prefix = "swipeoverlap_")
+    val swipeOverlap: SwipeOverlapSettings = SwipeOverlapSettings(),
+    
+    @Embedded(prefix = "battery_")
+    val battery: BatterySettings = BatterySettings(),
+    
     @Embedded(prefix = "errorrecovery_")
     val errorRecovery: ErrorRecoverySettings = ErrorRecoverySettings(),
     
+    @Embedded(prefix = "pricehistory_")
+    val priceHistory: PriceHistorySettings = PriceHistorySettings(),
+
     val lastModified: Long = System.currentTimeMillis()
 )
 
-/**
- * Room Entity for session logs
- */
-@Entity(tableName = "session_logs")
-data class SessionLogEntry(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val sessionStart: Long = System.currentTimeMillis(),
-    val sessionEnd: Long = 0,
-    val mode: String = "",
-    val itemsProcessed: Int = 0,
-    val totalProfit: Long = 0,
-    val averageCycleTime: Long = 0,
-    val errorCount: Int = 0,
-    val status: String = "RUNNING"
-)
-
-/**
- * Room Entity for price history
- */
 @Entity(tableName = "price_history")
 data class PriceHistoryEntry(
     @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val itemId: String,
-    val itemName: String = "",
-    val price: Int,
+    val id: Int = 0,
+    val itemId: String = "",
+    val price: Int = 0,
     val timestamp: Long = System.currentTimeMillis(),
+    val sourceMode: String = "",
+    val wasSuccessful: Boolean = true,
     val sessionId: Long = 0
 )
 
-/**
- * Operation mode enum
- */
-enum class OperationMode { 
-    IDLE, 
-    NEW_ORDER_SWEEPER, 
-    ORDER_EDITOR 
-}
+@Entity(tableName = "session_logs")
+data class SessionLogEntry(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val sessionStart: Long = System.currentTimeMillis(),
+    val sessionEnd: Long = 0,
+    val mode: String = "",
+    val totalCycles: Int = 0,
+    val successfulOps: Int = 0,
+    val failedOps: Int = 0,
+    val errors: Int = 0,
+    val exportPath: String = ""
+)
 
-/**
- * State type enum
- */
+@Entity(tableName = "session_history")
+data class SessionHistory(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val startTime: Long,
+    val endTime: Long,
+    val mode: String,
+    val itemsProcessed: Int,
+    val totalProfit: Long,
+    val averageCycleTime: Long
+)
+
+@Entity(tableName = "item_cache")
+data class ItemCache(
+    @PrimaryKey
+    val itemName: String,
+    val lastPrice: Int,
+    val lastUpdated: Long,
+    val category: String = ""
+)
+
+// ============================================
+// ENUMS AND OTHER TYPES
+// ============================================
+
+enum class OperationMode { IDLE, NEW_ORDER_SWEEPER, ORDER_EDITOR }
+
 enum class StateType {
-    IDLE, PAUSED, 
-    EXECUTE_TAP, 
-    TAP_PLUS_BUTTON, 
-    TAP_CONFIRM_BUTTON,
-    TAP_UPDATE_BUTTON,
-    TAP_EDIT_BUTTON,
-    EXECUTE_TEXT_INPUT, 
-    SCROLL_NEXT_ROW, 
-    COMPLETE_ITERATION, 
-    ERROR_RETRY,
-    ERROR_PRICE_SANITY, 
-    ERROR_END_OF_LIST, 
-    ERROR_OCR_FAILED,
-    COOLDOWN, 
-    RECOVERING,
-    NAVIGATE_TO_MY_ORDERS
+    IDLE, PAUSED, WAIT_POPUP_OPEN, SCAN_HIGHLIGHTS, SCAN_OCR,
+    VERIFY_UI_ELEMENT, VERIFY_GAME_WINDOW, EXECUTE_TAP, TAP_PLUS_BUTTON,
+    EXECUTE_TEXT_INPUT, EXECUTE_BUTTON, HANDLE_CONFIRMATION, HANDLE_ERROR_POPUP,
+    WAIT_POPUP_CLOSE, SCROLL_NEXT_ROW, COMPLETE_ITERATION, ERROR_RETRY,
+    ERROR_PRICE_SANITY, ERROR_TIMEOUT, ERROR_WINDOW_LOST, ERROR_STUCK_DETECTED,
+    ERROR_END_OF_LIST, ERROR_BATTERY_LOW, COOLDOWN, RECOVERING
 }
 
-/**
- * Automation state data class
- */
 data class AutomationState(
     val stateType: StateType = StateType.IDLE,
     val mode: OperationMode = OperationMode.IDLE,
     val currentRowIndex: Int = 0,
-    val itemsProcessed: Int = 0,
+    val currentX: Int = 0,
+    val currentY: Int = 0,
+    val ocrResult: OCRResult? = null,
+    val colorDetected: Boolean = false,
     val errorMessage: String? = null,
     val isPaused: Boolean = false,
+    val retryCount: Int = 0,
     val lastPrice: Int? = null,
-    val statistics: SessionStatistics = SessionStatistics()
+    val timestamp: Long = System.currentTimeMillis(),
+    val statistics: SessionStatistics = SessionStatistics(),
+    val lastPageText: String = "",
+    val endOfListCount: Int = 0,
+    val windowLostCount: Int = 0,
+    val isGameWindowActive: Boolean = true
 )
 
-/**
- * OCR Result
- */
 data class OCRResult(
     val text: String = "",
     val confidence: Float = 0f,
-    val boundingBox: Rect? = null,
+    val boundingBox: Rect = Rect(0, 0, 0, 0),
     val isNumber: Boolean = false,
     val numericValue: Int? = null
 )
 
-/**
- * Color detection result
- */
 data class ColorDetectionResult(
     val hexColor: String = "",
     val matchConfidence: Float = 0f,
     val isMatch: Boolean = false
 )
 
-/**
- * Log entry for debugging
- */
-data class LogEntry(
-    val timestamp: Long = System.currentTimeMillis(),
-    val level: LogLevel,
-    val tag: String,
-    val message: String
+data class AutomationConfig(
+    val createMode: SimpleCreateModeConfig = SimpleCreateModeConfig(),
+    val editMode: SimpleEditModeConfig = SimpleEditModeConfig(),
+    val ocrRegionLeft: Int = 400,
+    val ocrRegionTop: Int = 500,
+    val ocrRegionRight: Int = 700,
+    val ocrRegionBottom: Int = 700,
+    val loopDelayMs: Long = 500L,
+    val gestureDurationMs: Long = 200L
 )
 
-enum class LogLevel {
-    DEBUG, INFO, WARN, ERROR
-}
-
-/**
- * Randomization settings for anti-detection
- */
-data class RandomizationSettings(
-    val minRandomDelayMs: Long = 50,
-    val maxRandomDelayMs: Long = 200,
-    val randomSwipeDistancePercent: Float = 0.05f,
-    val pathRandomizationPixels: Int = 5,
-    val randomizeGesturePath: Boolean = true
+data class SimpleCreateModeConfig(
+    val rowStartX: Int = 540,
+    val rowStartY: Int = 400,
+    val rowEndX: Int = 540,
+    val rowEndY: Int = 1800,
+    val rowHeight: Int = 120,
+    val plusButtonX: Int = 800,
+    val plusButtonY: Int = 600,
+    val hardPriceCap: Long = 100000000L,
+    val maxRows: Int = 8,
+    val swipeX: Int = 540,
+    val swipeY: Int = 1500,
+    val swipeDistance: Int = 300
 )
 
-/**
- * Automation mode enum (for service)
- */
-enum class AutomationMode {
-    CREATE_BUY_ORDER,
-    EDIT_BUY_ORDER
-}
-
-/**
- * Step result for state machine
- */
-data class StepResult(
-    val success: Boolean,
-    val state: AutomationState,
-    val message: String = "",
-    val error: Throwable? = null,
-    val delay: Long = 0
+data class SimpleEditModeConfig(
+    val row1X: Int = 540,
+    val row1Y: Int = 400,
+    val priceInputX: Int = 650,
+    val priceInputY: Int = 600,
+    val hardPriceCap: Long = 100000000L,
+    val priceIncrement: Long = 1L,
+    val createButtonX: Int = 900,
+    val createButtonY: Int = 600,
+    val confirmButtonX: Int = 540,
+    val confirmButtonY: Int = 1200
 )
-
-/**
- * Converters for Room
- */
-class Converters {
-    @androidx.room.TypeConverter
-    fun fromStringList(value: List<String>): String = value.joinToString("|||")
-    
-    @androidx.room.TypeConverter
-    fun toStringList(value: String): List<String> = if (value.isEmpty()) emptyList() else value.split("|||")
-}
