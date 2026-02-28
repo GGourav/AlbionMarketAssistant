@@ -3,6 +3,7 @@ package com.albion.marketassistant.ui
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -13,8 +14,10 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
 import com.albion.marketassistant.R
 import com.albion.marketassistant.accessibility.MarketAccessibilityService
 import com.albion.marketassistant.data.OperationMode
@@ -28,20 +31,60 @@ class MainActivity : AppCompatActivity() {
     private val NOTIFICATION_PERMISSION_REQUEST_CODE = 1003
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
+    private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var switchDebugMode: SwitchCompat
+    private lateinit var tvDebugStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
 
         setupButtons()
+        setupDebugMode()
         checkPermissions()
     }
 
     override fun onResume() {
         super.onResume()
         updatePermissionStatus()
+        updateDebugStatus()
+    }
+
+    private fun setupDebugMode() {
+        switchDebugMode = findViewById(R.id.switchDebugMode)
+        tvDebugStatus = findViewById(R.id.tvDebugStatus)
+        
+        // Load saved debug mode
+        val debugMode = sharedPreferences.getBoolean(AutomationForegroundService.PREF_DEBUG_MODE, false)
+        switchDebugMode.isChecked = debugMode
+        updateDebugStatus()
+        
+        // Handle switch changes
+        switchDebugMode.setOnCheckedChangeListener { _, isChecked ->
+            sharedPreferences.edit()
+                .putBoolean(AutomationForegroundService.PREF_DEBUG_MODE, isChecked)
+                .apply()
+            updateDebugStatus()
+            
+            val msg = if (isChecked) {
+                "🐛 DEBUG MODE ON - Will process 1 item with step toasts"
+            } else {
+                "🐛 DEBUG MODE OFF - Normal operation"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun updateDebugStatus() {
+        val debugMode = sharedPreferences.getBoolean(AutomationForegroundService.PREF_DEBUG_MODE, false)
+        switchDebugMode.isChecked = debugMode
+        tvDebugStatus.text = if (debugMode) "ON" else "OFF"
+        tvDebugStatus.setTextColor(
+            if (debugMode) getColor(R.color.success) else getColor(R.color.error)
+        )
     }
 
     private fun setupButtons() {
@@ -175,6 +218,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startAutomationMode(mode: OperationMode) {
+        val debugMode = sharedPreferences.getBoolean(AutomationForegroundService.PREF_DEBUG_MODE, false)
+        
         val intent = Intent(this, AutomationForegroundService::class.java).apply {
             action = when (mode) {
                 OperationMode.NEW_ORDER_SWEEPER -> AutomationForegroundService.ACTION_CREATE_MODE
@@ -189,7 +234,14 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         
-        Toast.makeText(this, "${mode.name} started", Toast.LENGTH_SHORT).show()
+        val modeName = when (mode) {
+            OperationMode.NEW_ORDER_SWEEPER -> "CREATE ORDERS"
+            OperationMode.ORDER_EDITOR -> "EDIT ORDERS"
+            OperationMode.IDLE -> "IDLE"
+        }
+        
+        val debugText = if (debugMode) " [DEBUG - 1 item]" else ""
+        Toast.makeText(this, "$modeName started$debugText", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopAutomation() {
