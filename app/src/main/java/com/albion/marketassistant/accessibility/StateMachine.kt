@@ -1,6 +1,5 @@
 // FILE: app/src/main/java/com/albion/marketassistant/accessibility/StateMachine.kt
 // UPDATED: v3 - Fixed HANDLE_ERROR_POPUP with step logging + correct +1 outbid flow
-// Target: iQOO Neo 6 (1080×2400) - works on any screen
 
 package com.albion.marketassistant.accessibility
 
@@ -21,33 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * =====================================================
- * STATE MACHINE - Albion Online Market Assistant
- * =====================================================
- * 
- * CREATE BUY ORDER MODE (Outbid +1 silver loop):
- *   User is on "Buy" tab with list of items visible
- *   For each item:
- *     1. Tap "Buy Order" button (opens price panel)
- *     2. Albion auto-fills suggested price
- *     3. Tap "+" icon ONCE (increments price by 1 silver)
- *     4. Tap "Confirm" button
- *     5. Scroll to next item
- * 
- * EDIT BUY ORDER MODE:
- *   1. Tap "My Orders" tab
- *   2. For each order:
- *      a. Tap Edit (pencil) icon
- *      b. Read top order price via OCR
- *      c. Set new price = top price + 1 (direct setText, NO keyboard)
- *      d. Tap "Update" button (NOT "Confirm"!)
- *      e. Continue to next order
- * 
- * ERROR HANDLING:
- *   Every step logs exactly what it's doing
- *   Error popup tells EXACTLY which step failed
- */
 class StateMachine(
     private val scope: CoroutineScope,
     private val calibration: CalibrationData,
@@ -90,7 +62,6 @@ class StateMachine(
             return
         }
         
-        // Initialize gesture helper with debug mode
         gestureHelper = GestureHelper(accessibilityService, debugMode) { step ->
             lastStepName = step
             onStepUpdate?.invoke(step)
@@ -102,7 +73,7 @@ class StateMachine(
         Log.i(TAG, "Debug Mode: $debugMode")
         Log.i(TAG, "========================================")
         
-        showToast("🚀 Starting $mode")
+        showToast("Starting $mode")
         
         isRunning.set(true)
         isPaused.set(false)
@@ -119,21 +90,18 @@ class StateMachine(
     fun pause() {
         isPaused.set(true)
         updateState(StateType.PAUSED, "Paused")
-        showToast("⏸ Paused")
-        Log.d(TAG, "Paused")
+        showToast("Paused")
     }
 
     fun resume() {
         isPaused.set(false)
         updateState(StateType.IDLE, "Resumed")
-        showToast("▶ Resumed")
-        Log.d(TAG, "Resumed")
+        showToast("Resumed")
     }
 
     fun isPaused(): Boolean = isPaused.get()
 
     fun stop() {
-        Log.d(TAG, "Stopping state machine")
         isRunning.set(false)
         isPaused.set(false)
         loopJob?.cancel()
@@ -161,19 +129,12 @@ class StateMachine(
         }
     }
 
-    // =====================================================
-    // MODE 1: CREATE BUY ORDER (OUTBID +1 SILVER LOOP)
-    // =====================================================
-    
     private suspend fun executeCreateBuyOrderLoop() {
         val config = calibration.createMode
         val timing = calibration.global
         val maxItems = if (debugMode) 1 else config.maxItemsToProcess
         
-        Log.i(TAG, "==========================================")
-        Log.i(TAG, "CREATE MODE: Starting outbid loop")
-        Log.i(TAG, "Max items: $maxItems | Debug: $debugMode")
-        Log.i(TAG, "==========================================")
+        Log.i(TAG, "CREATE MODE: Starting outbid loop for max $maxItems items")
         
         for (i in 0 until maxItems) {
             if (!isRunning.get()) break
@@ -192,14 +153,13 @@ class StateMachine(
                     onProgressUpdate?.invoke(processed, maxItems)
                     
                     updateState(StateType.COMPLETE_ITERATION, 
-                        "✅ Item $processed created (+1 silver outbid)")
-                    showToast("✅ Item $processed done")
+                        "Item $processed created (+1 silver outbid)")
+                    showToast("Item $processed done")
                     
                     delay(timing.cycleCooldownMs)
                     scrollToNextItem(config, timing, itemNum)
                     
                 } else {
-                    // DETAILED ERROR - This is the key fix!
                     val errorMsg = result.message
                     handleStepError("CREATE item $itemNum", errorMsg)
                     
@@ -223,7 +183,7 @@ class StateMachine(
         
         val total = itemsProcessed.get()
         Log.i(TAG, "CREATE MODE COMPLETE: $total orders created")
-        showToast("🎉 Done! $total orders created")
+        showToast("Done! $total orders created")
         updateState(StateType.COMPLETE_ITERATION, "Complete: $total orders created")
         stop()
     }
@@ -234,47 +194,38 @@ class StateMachine(
         itemNum: Int
     ): CreateOrderResult {
         
-        // ==========================================
         // STEP 1: Tap "Buy Order" button
-        // Location: Right side of item row
-        // ==========================================
         val rowY = config.firstRowYPercent + (currentRowIndex * config.rowYOffsetPercent)
         val step1Name = "1. Tap Buy Order button (row $currentRowIndex)"
         
         updateState(StateType.EXECUTE_TAP, step1Name)
-        Log.i(TAG, "═══ ITEM $itemNum - STEP 1: Tap Buy Order at (${String.format("%.2f", config.buyOrderButtonXPercent)}, ${String.format("%.2f", rowY)})")
+        Log.i(TAG, "ITEM $itemNum - STEP 1: Tap Buy Order at (${String.format("%.2f", config.buyOrderButtonXPercent)}, ${String.format("%.2f", rowY)})")
         
         if (!gestureHelper.tap(config.buyOrderButtonXPercent, rowY, timing.delayAfterTapMs, step1Name)) {
             return CreateOrderResult(false, "FAILED at Step 1: Tap Buy Order button - Check X%=${String.format("%.2f", config.buyOrderButtonXPercent)} Y%=${String.format("%.2f", rowY)}")
         }
         
-        // ==========================================
-        // STEP 2: Tap "+" icon (increment price by 1)
-        // Location: Right side of price field in popup
-        // ==========================================
+        // STEP 2: Tap "+" icon
         val step2Name = "2. Tap + icon (+1 silver)"
         
         updateState(StateType.TAP_PLUS_BUTTON, step2Name)
-        Log.i(TAG, "═══ ITEM $itemNum - STEP 2: Tap + icon at (${String.format("%.2f", config.plusButtonXPercent)}, ${String.format("%.2f", config.plusButtonYPercent)})")
+        Log.i(TAG, "ITEM $itemNum - STEP 2: Tap + icon at (${String.format("%.2f", config.plusButtonXPercent)}, ${String.format("%.2f", config.plusButtonYPercent)})")
         
         if (!gestureHelper.tap(config.plusButtonXPercent, config.plusButtonYPercent, timing.delayAfterTapMs, step2Name)) {
             return CreateOrderResult(false, "FAILED at Step 2: Tap + icon - Check X%=${String.format("%.2f", config.plusButtonXPercent)} Y%=${String.format("%.2f", config.plusButtonYPercent)}")
         }
         
-        // ==========================================
         // STEP 3: Tap "Confirm" button
-        // Location: Bottom of popup panel
-        // ==========================================
         val step3Name = "3. Tap Confirm button"
         
         updateState(StateType.TAP_CONFIRM_BUTTON, step3Name)
-        Log.i(TAG, "═══ ITEM $itemNum - STEP 3: Tap Confirm at (${String.format("%.2f", config.confirmButtonXPercent)}, ${String.format("%.2f", config.confirmButtonYPercent)})")
+        Log.i(TAG, "ITEM $itemNum - STEP 3: Tap Confirm at (${String.format("%.2f", config.confirmButtonXPercent)}, ${String.format("%.2f", config.confirmButtonYPercent)})")
         
         if (!gestureHelper.tap(config.confirmButtonXPercent, config.confirmButtonYPercent, timing.delayAfterConfirmMs, step3Name)) {
             return CreateOrderResult(false, "FAILED at Step 3: Tap Confirm - Check X%=${String.format("%.2f", config.confirmButtonXPercent)} Y%=${String.format("%.2f", config.confirmButtonYPercent)}")
         }
         
-        Log.i(TAG, "═══ ITEM $itemNum - ✅ ALL STEPS SUCCESS")
+        Log.i(TAG, "ITEM $itemNum - ALL STEPS SUCCESS")
         return CreateOrderResult(true, "Order created successfully")
     }
     
@@ -285,7 +236,7 @@ class StateMachine(
             val stepName = "4. Scroll to next items"
             
             updateState(StateType.SCROLL_NEXT_ROW, stepName)
-            Log.i(TAG, "═══ ITEM $itemNum - STEP 4: Scroll down")
+            Log.i(TAG, "ITEM $itemNum - STEP 4: Scroll down")
             
             gestureHelper.swipeDownToUp(
                 startYPercent = config.scrollStartYPercent,
@@ -299,27 +250,18 @@ class StateMachine(
         }
     }
 
-    // =====================================================
-    // MODE 2: EDIT BUY ORDER (READ PRICE + UPDATE LOOP)
-    // =====================================================
-    
     private suspend fun executeEditBuyOrderLoop() {
         val config = calibration.editMode
         val timing = calibration.global
         val maxOrders = if (debugMode) 1 else config.maxOrdersToEdit
         
-        Log.i(TAG, "==========================================")
-        Log.i(TAG, "EDIT MODE: Starting edit loop")
-        Log.i(TAG, "Max orders: $maxOrders | Debug: $debugMode")
-        Log.i(TAG, "==========================================")
+        Log.i(TAG, "EDIT MODE: Starting edit loop for max $maxOrders orders")
         
-        // ==========================================
         // STEP 0: Navigate to "My Orders" tab
-        // ==========================================
         val step0Name = "0. Go to My Orders tab"
         
         updateState(StateType.NAVIGATE_TO_MY_ORDERS, step0Name)
-        Log.i(TAG, "═══ STEP 0: Tap My Orders at (${String.format("%.2f", config.myOrdersTabXPercent)}, ${String.format("%.2f", config.myOrdersTabYPercent)})")
+        Log.i(TAG, "STEP 0: Tap My Orders at (${String.format("%.2f", config.myOrdersTabXPercent)}, ${String.format("%.2f", config.myOrdersTabYPercent)})")
         
         if (!gestureHelper.tap(config.myOrdersTabXPercent, config.myOrdersTabYPercent, 1400, step0Name)) {
             val error = "FAILED at Step 0: Navigate to My Orders - Check X%=${String.format("%.2f", config.myOrdersTabXPercent)} Y%=${String.format("%.2f", config.myOrdersTabYPercent)}"
@@ -345,14 +287,14 @@ class StateMachine(
                     onProgressUpdate?.invoke(processed, maxOrders)
                     
                     updateState(StateType.COMPLETE_ITERATION, 
-                        "✅ Order $processed updated to ${result.newPrice} silver")
-                    showToast("✅ Order $processed: ${result.newPrice}s")
+                        "Order $processed updated to ${result.newPrice} silver")
+                    showToast("Order $processed: ${result.newPrice}s")
                     
                     delay(timing.cycleCooldownMs)
                     
                 } else if (result.isEndOfList) {
                     Log.i(TAG, "EDIT: End of orders list reached")
-                    showToast("✅ All orders processed!")
+                    showToast("All orders processed!")
                     updateState(StateType.ERROR_END_OF_LIST, "All orders processed")
                     break
                     
@@ -380,7 +322,7 @@ class StateMachine(
         
         val total = itemsProcessed.get()
         Log.i(TAG, "EDIT MODE COMPLETE: $total orders updated")
-        showToast("🎉 Done! $total orders updated")
+        showToast("Done! $total orders updated")
         updateState(StateType.COMPLETE_ITERATION, "Complete: $total orders updated")
         stop()
     }
@@ -391,26 +333,21 @@ class StateMachine(
         orderNum: Int
     ): EditOrderResult {
         
-        // ==========================================
         // STEP 1: Tap Edit (pencil) icon
-        // CRITICAL: Always tap ROW 1 - editing pushes order to bottom
-        // ==========================================
         val step1Name = "1. Tap Edit pencil icon"
         
         updateState(StateType.TAP_EDIT_BUTTON, step1Name)
-        Log.i(TAG, "═══ ORDER $orderNum - STEP 1: Tap Edit at (${String.format("%.2f", config.editButtonXPercent)}, ${String.format("%.2f", config.editButtonYPercent)})")
+        Log.i(TAG, "ORDER $orderNum - STEP 1: Tap Edit at (${String.format("%.2f", config.editButtonXPercent)}, ${String.format("%.2f", config.editButtonYPercent)})")
         
         if (!gestureHelper.tap(config.editButtonXPercent, config.editButtonYPercent, timing.delayAfterTapMs, step1Name)) {
             return EditOrderResult(false, "FAILED at Step 1: Tap Edit pencil - Check X%=${String.format("%.2f", config.editButtonXPercent)} Y%=${String.format("%.2f", config.editButtonYPercent)}")
         }
         
-        // ==========================================
         // STEP 2: Read current top order price via OCR
-        // ==========================================
         val step2Name = "2. Read top price via OCR"
         
         updateState(StateType.COOLDOWN, step2Name)
-        Log.i(TAG, "═══ ORDER $orderNum - STEP 2: Reading price via OCR")
+        Log.i(TAG, "ORDER $orderNum - STEP 2: Reading price via OCR")
         
         val topPrice = readTopOrderPrice(config)
         
@@ -420,11 +357,9 @@ class StateMachine(
             return EditOrderResult(false, "OCR failed - no price detected", isEndOfList = true)
         }
         
-        // ==========================================
         // STEP 3: Calculate new price = top price + 1
-        // ==========================================
         val newPrice = topPrice + config.priceIncrement
-        Log.i(TAG, "═══ ORDER $orderNum - Top price=$topPrice → New price=$newPrice")
+        Log.i(TAG, "ORDER $orderNum - Top price=$topPrice -> New price=$newPrice")
         
         // Safety check
         if (newPrice > config.hardPriceCap) {
@@ -435,19 +370,15 @@ class StateMachine(
             return EditOrderResult(false, error)
         }
         
-        // ==========================================
         // STEP 4: Set new price via AccessibilityNodeInfo
-        // CRITICAL: Uses setText() - NO on-screen keyboard!
-        // ==========================================
         val step4Name = "4. Set price to $newPrice"
         
         updateState(StateType.EXECUTE_TEXT_INPUT, step4Name)
-        Log.i(TAG, "═══ ORDER $orderNum - STEP 4: Set price to $newPrice")
+        Log.i(TAG, "ORDER $orderNum - STEP 4: Set price to $newPrice")
         
         val priceResult = gestureHelper.setPriceField(newPrice.toString(), step4Name)
         
         if (!priceResult.success) {
-            // Retry once
             Log.w(TAG, "EDIT: Failed to set price, retrying...")
             delay(500)
             
@@ -460,26 +391,20 @@ class StateMachine(
         lastKnownPrice = newPrice
         delay(timing.delayAfterTapMs)
         
-        // ==========================================
         // STEP 5: Tap "Update" button
-        // CRITICAL: This is "Update" NOT "Confirm" in edit mode!
-        // ==========================================
         val step5Name = "5. Tap Update button"
         
         updateState(StateType.TAP_UPDATE_BUTTON, step5Name)
-        Log.i(TAG, "═══ ORDER $orderNum - STEP 5: Tap Update at (${String.format("%.2f", config.updateButtonXPercent)}, ${String.format("%.2f", config.updateButtonYPercent)})")
+        Log.i(TAG, "ORDER $orderNum - STEP 5: Tap Update at (${String.format("%.2f", config.updateButtonXPercent)}, ${String.format("%.2f", config.updateButtonYPercent)})")
         
         if (!gestureHelper.tap(config.updateButtonXPercent, config.updateButtonYPercent, timing.delayAfterConfirmMs, step5Name)) {
             return EditOrderResult(false, "FAILED at Step 5: Tap Update - Check X%=${String.format("%.2f", config.updateButtonXPercent)} Y%=${String.format("%.2f", config.updateButtonYPercent)}")
         }
         
-        Log.i(TAG, "═══ ORDER $orderNum - ✅ ALL STEPS SUCCESS - Price: $newPrice")
+        Log.i(TAG, "ORDER $orderNum - ALL STEPS SUCCESS - Price: $newPrice")
         return EditOrderResult(true, "Order updated", newPrice)
     }
     
-    /**
-     * Read the top order price from the edit panel via OCR
-     */
     private suspend fun readTopOrderPrice(config: EditModeConfig): Int? {
         val bitmap = onScreenshotRequest?.invoke()
         if (bitmap == null) {
@@ -516,18 +441,84 @@ class StateMachine(
         }
     }
 
-    // =====================================================
-    // HELPER METHODS
-    // =====================================================
-    
     private fun handleStepError(context: String, message: String) {
         val fullError = buildErrorMessage(context, null, message)
         Log.e(TAG, fullError)
         updateState(StateType.ERROR_RETRY, fullError)
         
         if (debugMode) {
-            showToast("❌ $message")
+            showToast("ERROR: $message")
         }
     }
     
-    private fun buildErrorMessage(context: String, exception: Exception? = null,
+    private fun buildErrorMessage(context: String, exception: Exception? = null, customMessage: String? = null): String {
+        val sb = StringBuilder()
+        sb.append("HANDLE_ERROR_POPUP\n")
+        sb.append("------------------\n")
+        sb.append("Context: $context\n")
+        sb.append("Last Step: $lastStepName\n")
+        sb.append("Screen: ${if (::gestureHelper.isInitialized) gestureHelper.getScreenInfo() else "Unknown"}\n")
+        
+        if (customMessage != null) {
+            sb.append("Error: $customMessage\n")
+        }
+        
+        if (exception != null) {
+            sb.append("Exception: ${exception.javaClass.simpleName}\n")
+            sb.append("Message: ${exception.message}\n")
+        }
+        
+        sb.append("------------------\n")
+        sb.append("Fix: Adjust percent coordinates or delays in Calibration Settings")
+        
+        return sb.toString()
+    }
+    
+    private fun updateState(stateType: StateType, message: String = "") {
+        val state = AutomationState(
+            stateType = stateType,
+            mode = currentMode,
+            currentRowIndex = currentRowIndex,
+            itemsProcessed = itemsProcessed.get(),
+            errorMessage = if (stateType.name.contains("ERROR")) message else null,
+            isPaused = isPaused.get(),
+            lastPrice = lastKnownPrice,
+            statistics = SessionStatistics(
+                totalCycles = itemsProcessed.get(),
+                successfulOperations = itemsProcessed.get(),
+                consecutiveErrors = consecutiveErrors.get(),
+                lastPrice = lastKnownPrice
+            )
+        )
+        
+        _stateFlow.value = state
+        onStateChange?.invoke(state)
+    }
+    
+    private fun showToast(message: String) {
+        mainHandler.post {
+            Toast.makeText(accessibilityService, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    fun getStatistics(): SessionStatistics {
+        return SessionStatistics(
+            totalCycles = itemsProcessed.get(),
+            successfulOperations = itemsProcessed.get(),
+            consecutiveErrors = consecutiveErrors.get(),
+            lastPrice = lastKnownPrice
+        )
+    }
+}
+
+data class CreateOrderResult(
+    val success: Boolean,
+    val message: String
+)
+
+data class EditOrderResult(
+    val success: Boolean,
+    val message: String,
+    val newPrice: Int? = null,
+    val isEndOfList: Boolean = false
+)
