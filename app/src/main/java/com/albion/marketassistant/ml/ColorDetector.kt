@@ -6,27 +6,18 @@ import com.albion.marketassistant.data.ColorDetectionResult
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-/**
- * Detects and validates item colors in Albion Online market interface
- * Used to verify if an item row is valid for automation
- */
 class ColorDetector {
     
     companion object {
-        // Albion Online color constants
         private const val ROW_BACKGROUND_NORMAL = 0x1A1A1A
         private const val ROW_BACKGROUND_HIGHLIGHT = 0x2A2A2A
         private const val PRICE_TEXT_COLOR = 0xFFFFFF
         private const val ITEM_NAME_COLOR = 0xEEEEEE
         
-        // Color thresholds
         private const val COLOR_TOLERANCE = 30
         private const val MIN_VALID_PIXELS_PERCENT = 0.6f
     }
     
-    /**
-     * Check if a region contains valid item row colors
-     */
     fun isValidItemRegion(
         bitmap: Bitmap,
         regionX: Int,
@@ -40,7 +31,6 @@ class ColorDetector {
             var dominantColor = 0
             var colorCounts = mutableMapOf<Int, Int>()
             
-            // Sample pixels in the region
             val stepX = (regionWidth / 10).coerceAtLeast(1)
             val stepY = (regionHeight / 5).coerceAtLeast(1)
             
@@ -53,7 +43,6 @@ class ColorDetector {
                         colorCounts[colorKey] = (colorCounts[colorKey] ?: 0) + 1
                         totalChecked++
                         
-                        // Check if pixel matches expected colors
                         if (isValidRowColor(pixelColor)) {
                             validPixels++
                         }
@@ -61,7 +50,6 @@ class ColorDetector {
                 }
             }
             
-            // Find dominant color
             dominantColor = colorCounts.maxByOrNull { it.value }?.key ?: 0
             
             val confidence = if (totalChecked > 0) {
@@ -92,31 +80,22 @@ class ColorDetector {
         }
     }
     
-    /**
-     * Check if color matches expected row background
-     */
     private fun isValidRowColor(color: Int): Boolean {
         val red = Color.red(color)
         val green = Color.green(color)
         val blue = Color.blue(color)
         
-        // Check for dark background colors (typical Albion UI)
         val isDarkBackground = red < 60 && green < 60 && blue < 60
         
-        // Check for highlight colors
         val isHighlight = abs(red - 42) < COLOR_TOLERANCE &&
                          abs(green - 42) < COLOR_TOLERANCE &&
                          abs(blue - 42) < COLOR_TOLERANCE
         
-        // Check for very dark colors (empty space)
         val isVeryDark = red < 20 && green < 20 && blue < 20
         
         return isDarkBackground || isHighlight || isVeryDark
     }
     
-    /**
-     * Simplify color for counting (reduce to basic color groups)
-     */
     private fun simplifyColor(color: Int): Int {
         val red = (Color.red(color) / 32) * 32
         val green = (Color.green(color) / 32) * 32
@@ -124,9 +103,6 @@ class ColorDetector {
         return Color.rgb(red, green, blue)
     }
     
-    /**
-     * Detect if there's a buy order indicator at position
-     */
     fun hasBuyOrderIndicator(
         bitmap: Bitmap,
         x: Int,
@@ -148,7 +124,6 @@ class ColorDetector {
                         val green = Color.green(color)
                         val blue = Color.blue(color)
                         
-                        // Look for green indicator color
                         if (green > 150 && green > red * 1.5 && green > blue * 1.5) {
                             greenPixels++
                         }
@@ -163,9 +138,6 @@ class ColorDetector {
         }
     }
     
-    /**
-     * Detect price text color in OCR region
-     */
     fun detectPriceTextColor(
         bitmap: Bitmap,
         left: Int,
@@ -205,9 +177,6 @@ class ColorDetector {
         )
     }
     
-    /**
-     * Calculate brightness of a color
-     */
     private fun getBrightness(color: Int): Int {
         val red = Color.red(color)
         val green = Color.green(color)
@@ -215,9 +184,6 @@ class ColorDetector {
         return (red + green + blue) / 3
     }
     
-    /**
-     * Calculate color distance between two colors
-     */
     fun colorDistance(color1: Int, color2: Int): Double {
         val r1 = Color.red(color1).toDouble()
         val g1 = Color.green(color1).toDouble()
@@ -232,9 +198,6 @@ class ColorDetector {
                    (b1 - b2) * (b1 - b2))
     }
     
-    /**
-     * Check if region contains error message (red color)
-     */
     fun hasErrorMessage(
         bitmap: Bitmap,
         x: Int,
@@ -259,7 +222,6 @@ class ColorDetector {
                     val green = Color.green(color)
                     val blue = Color.blue(color)
                     
-                    // Look for red error color
                     if (red > 180 && red > green * 2 && red > blue * 2) {
                         redPixels++
                     }
@@ -271,17 +233,12 @@ class ColorDetector {
         return totalPixels > 0 && (redPixels.toFloat() / totalPixels) > 0.1f
     }
     
-    /**
-     * Analyze a full bitmap for valid market interface
-     */
     fun analyzeMarketInterface(bitmap: Bitmap): MarketInterfaceAnalysis {
         val width = bitmap.width
         val height = bitmap.height
         
-        // Check for dark background
         val backgroundCheck = isValidItemRegion(bitmap, 0, 0, width / 4, height / 4)
         
-        // Check for UI elements
         val hasValidBackground = backgroundCheck.isValid
         
         return MarketInterfaceAnalysis(
