@@ -1,6 +1,3 @@
-// FILE: app/src/main/java/com/albion/marketassistant/accessibility/MarketAccessibilityService.kt
-// UPDATED: Works with percentage-based GestureHelper
-
 package com.albion.marketassistant.accessibility
 
 import android.accessibilityservice.AccessibilityService
@@ -75,7 +72,6 @@ class MarketAccessibilityService : AccessibilityService() {
     private var stateMachine: StateMachine? = null
     private var calibration: CalibrationData? = null
 
-    // Screen capture
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -306,13 +302,6 @@ class MarketAccessibilityService : AccessibilityService() {
         }
     }
 
-    // =====================================================
-    // DIRECT GESTURE METHODS (for GestureHelper)
-    // =====================================================
-    
-    /**
-     * Perform a tap at pixel coordinates
-     */
     fun performTap(x: Int, y: Int, durationMs: Long = 80): Boolean {
         return performGesture(
             Path().apply { moveTo(x.toFloat(), y.toFloat()) },
@@ -320,9 +309,6 @@ class MarketAccessibilityService : AccessibilityService() {
         )
     }
 
-    /**
-     * Perform a swipe gesture
-     */
     fun performSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long = 400): Boolean {
         return performGesture(
             Path().apply {
@@ -365,14 +351,8 @@ class MarketAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Get screen dimensions
-     */
     fun getScreenWidth(): Int = screenWidth
     fun getScreenHeight(): Int = screenHeight
     
-    /**
-     * Get root accessibility node
-     */
     fun getRootNode(): AccessibilityNodeInfo? = rootInActiveWindow
 }
