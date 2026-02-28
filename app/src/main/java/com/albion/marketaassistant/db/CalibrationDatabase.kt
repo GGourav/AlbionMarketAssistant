@@ -1,12 +1,12 @@
-package com.albion.marketassistant.db
+package com.albion.marketaassistant.db
 
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.albion.marketassistant.data.CalibrationData
-import com.albion.marketassistant.data.SessionHistory
-import com.albion.marketassistant.data.ItemCache
+import com.albion.marketaassistant.data.CalibrationData
+import com.albion.marketaassistant.data.SessionHistory
+import com.albion.marketaassistant.data.ItemCache
 
 @Database(
     entities = [
