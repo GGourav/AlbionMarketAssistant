@@ -1,3 +1,6 @@
+// FILE: app/src/main/java/com/albion/marketassistant/accessibility/MarketAccessibilityService.kt
+// UPDATED: Works with percentage-based GestureHelper
+
 package com.albion.marketassistant.accessibility
 
 import android.accessibilityservice.AccessibilityService
@@ -95,7 +98,7 @@ class MarketAccessibilityService : AccessibilityService() {
         intent.setPackage(packageName)
         sendBroadcast(intent)
         
-        Log.d(TAG, "Service connected")
+        Log.d(TAG, "Service connected - Ready for Albion Online automation")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -128,7 +131,7 @@ class MarketAccessibilityService : AccessibilityService() {
                         }
                     }, mainHandler)
                     setupImageReader()
-                    Log.d(TAG, "MediaProjection setup successful")
+                    Log.d(TAG, "MediaProjection setup successful - ${screenWidth}x${screenHeight}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to setup MediaProjection", e)
                 }
@@ -175,15 +178,21 @@ class MarketAccessibilityService : AccessibilityService() {
 
     fun setCalibration(data: CalibrationData) {
         calibration = data
-        Log.d(TAG, "Calibration set")
+        Log.d(TAG, "Calibration set: ${data.createMode.maxItemsToProcess} items max")
     }
 
     fun startAutomation(mode: OperationMode) {
         val cal = calibration ?: CalibrationData()
         stateMachine?.stop()
-        stateMachine = StateMachine(serviceScope, cal, UIInteractorImpl(), this)
+        stateMachine = StateMachine(serviceScope, cal, this, this)
         stateMachine?.onScreenshotRequest = {
             captureScreen()
+        }
+        stateMachine?.onStateChange = { state ->
+            Log.d(TAG, "State: ${state.stateType} - ${state.errorMessage ?: "OK"}")
+        }
+        stateMachine?.onError = { error ->
+            Log.e(TAG, "Automation error: $error")
         }
         stateMachine?.startMode(mode)
         Log.d(TAG, "Automation started: $mode")
@@ -204,8 +213,6 @@ class MarketAccessibilityService : AccessibilityService() {
     }
 
     fun isRunning(): Boolean = stateMachine != null && stateMachine?.isPaused() == false
-
-    fun getUIInteractor(): UIInteractor = UIInteractorImpl()
 
     fun getStateMachine(): StateMachine? = stateMachine
 
@@ -299,177 +306,73 @@ class MarketAccessibilityService : AccessibilityService() {
         }
     }
 
+    // =====================================================
+    // DIRECT GESTURE METHODS (for GestureHelper)
+    // =====================================================
+    
     /**
-     * UIInteractor Implementation
-     * CRITICAL: All taps use 150-300ms duration to prevent ghost taps
+     * Perform a tap at pixel coordinates
      */
-    inner class UIInteractorImpl : UIInteractor {
+    fun performTap(x: Int, y: Int, durationMs: Long = 80): Boolean {
+        return performGesture(
+            Path().apply { moveTo(x.toFloat(), y.toFloat()) },
+            durationMs.coerceIn(50, 500)
+        )
+    }
 
-        override fun performTap(x: Int, y: Int, durationMs: Long): Boolean {
-            return performGesture(
-                createTapPath(x, y),
-                durationMs
-            )
-        }
-
-        override fun performSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long): Boolean {
-            return performGesture(
-                createSwipePath(startX, startY, endX, endY),
-                durationMs
-            )
-        }
-
-        /**
-         * CRITICAL for EDIT MODE:
-         * Inject text using ACTION_SET_TEXT
-         * This does NOT trigger the soft keyboard
-         * 
-         * DO NOT use dispatchGesture to tap the text box first!
-         */
-        override fun injectText(text: String): Boolean {
-            return try {
-                val rootNode = rootInActiveWindow ?: return false
-
-                // Find the focused input field or any editable field
-                val targetNode = findEditableNode(rootNode)
-                
-                if (targetNode != null) {
-                    val arguments = android.os.Bundle()
-                    arguments.putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        text
-                    )
-                    val result = targetNode.performAction(
-                        AccessibilityNodeInfo.ACTION_SET_TEXT,
-                        arguments
-                    )
-                    targetNode.recycle()
-                    
-                    Log.d(TAG, "Text injection via ACTION_SET_TEXT: '$text' -> $result")
-                    return result
-                }
-
-                Log.w(TAG, "No editable node found for text injection")
-                false
-            } catch (e: Exception) {
-                Log.e(TAG, "Error injecting text", e)
-                false
-            }
-        }
-
-        /**
-         * Find editable node for text injection
-         * Properly recycles non-target nodes
-         */
-        private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-            // Check if this node is editable
-            if (node.isEditable && node.isEnabled) {
-                return node  // Return without recycling - caller must recycle
-            }
-
-            // Check children
-            for (i in 0 until node.childCount) {
-                val child = node.getChild(i) ?: continue
-                val result = findEditableNode(child)
-                if (result != null) {
-                    return result
-                }
-                child.recycle()
-            }
-            return null
-        }
-
-        override fun clearTextField(): Boolean {
-            return try {
-                val rootNode = rootInActiveWindow ?: return false
-                val targetNode = findEditableNode(rootNode)
-                
-                if (targetNode != null) {
-                    val arguments = android.os.Bundle()
-                    arguments.putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        ""
-                    )
-                    val result = targetNode.performAction(
-                        AccessibilityNodeInfo.ACTION_SET_TEXT,
-                        arguments
-                    )
-                    targetNode.recycle()
-                    result
-                } else {
-                    false
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error clearing text field", e)
-                false
-            }
-        }
-
-        override fun dismissKeyboard(): Boolean {
-            return try {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Error dismissing keyboard", e)
-                false
-            }
-        }
-
-        private fun createTapPath(x: Int, y: Int): Path {
-            return Path().apply {
-                moveTo(x.toFloat(), y.toFloat())
-            }
-        }
-
-        private fun createSwipePath(startX: Int, startY: Int, endX: Int, endY: Int): Path {
-            return Path().apply {
+    /**
+     * Perform a swipe gesture
+     */
+    fun performSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long = 400): Boolean {
+        return performGesture(
+            Path().apply {
                 moveTo(startX.toFloat(), startY.toFloat())
                 lineTo(endX.toFloat(), endY.toFloat())
-            }
-        }
+            },
+            durationMs.coerceIn(100, 1000)
+        )
+    }
 
-        private fun performGesture(path: Path, durationMs: Long): Boolean {
-            return try {
-                var success = false
+    private fun performGesture(path: Path, durationMs: Long): Boolean {
+        return try {
+            var success = false
+            val latch = CountDownLatch(1)
 
-                // CRITICAL: Ensure duration is at least 150ms to prevent ghost taps
-                val duration = durationMs.coerceIn(150L, 500L)
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
+                .build()
 
-                val gesture = GestureDescription.Builder()
-                    .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
-                    .build()
-
-                val latch = CountDownLatch(1)
-
-                mainHandler.post {
-                    success = dispatchGesture(gesture, object : GestureResultCallback() {
-                        override fun onCompleted(gestureDescription: GestureDescription?) {
-                            latch.countDown()
-                        }
-                        override fun onCancelled(gestureDescription: GestureDescription?) {
-                            latch.countDown()
-                        }
-                    }, null)
-
-                    if (!success) {
+            mainHandler.post {
+                success = dispatchGesture(gesture, object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
                         latch.countDown()
                     }
-                }
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        latch.countDown()
+                    }
+                }, null)
 
-                latch.await(2, TimeUnit.SECONDS)
-                success
-            } catch (e: Exception) {
-                Log.e(TAG, "Error performing gesture", e)
-                false
+                if (!success) {
+                    latch.countDown()
+                }
             }
+
+            latch.await(3, TimeUnit.SECONDS)
+            success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing gesture", e)
+            false
         }
     }
-}
 
-interface UIInteractor {
-    fun performTap(x: Int, y: Int, durationMs: Long): Boolean
-    fun performSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long): Boolean
-    fun injectText(text: String): Boolean
-    fun clearTextField(): Boolean
-    fun dismissKeyboard(): Boolean
+    /**
+     * Get screen dimensions
+     */
+    fun getScreenWidth(): Int = screenWidth
+    fun getScreenHeight(): Int = screenHeight
+    
+    /**
+     * Get root accessibility node
+     */
+    fun getRootNode(): AccessibilityNodeInfo? = rootInActiveWindow
 }
