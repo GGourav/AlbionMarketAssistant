@@ -5,12 +5,12 @@ import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import com.albion.marketassistant.data.LogEntry
 import com.albion.marketassistant.data.LogLevel
-import com.albion.marketassistant.data.SessionHistory
+import com.albion.marketassistant.data.SessionLogEntry
 import com.albion.marketassistant.data.SessionStatistics
-import com.albion.marketassistant.data.ItemCache
-import com.albion.marketassistant.database.AppDatabase
-import com.albion.marketassistant.database.SessionHistoryDao
-import com.albion.marketassistant.database.ItemCacheDao
+import com.albion.marketassistant.data.PriceHistoryEntry
+import com.albion.marketassistant.db.CalibrationDatabase
+import com.albion.marketassistant.db.SessionLogDao
+import com.albion.marketassistant.db.PriceHistoryDao
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,12 +22,12 @@ class StatisticsManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sharedPreferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     
-    private val sessionHistoryDao: SessionHistoryDao by lazy {
-        AppDatabase.getInstance(context).sessionHistoryDao()
+    private val sessionLogDao: SessionLogDao by lazy {
+        CalibrationDatabase.getInstance(context).sessionLogDao()
     }
     
-    private val itemCacheDao: ItemCacheDao by lazy {
-        AppDatabase.getInstance(context).itemCacheDao()
+    private val priceHistoryDao: PriceHistoryDao by lazy {
+        CalibrationDatabase.getInstance(context).priceHistoryDao()
     }
     
     private val _currentSession = MutableStateFlow(SessionStatistics())
@@ -41,6 +41,7 @@ class StatisticsManager(private val context: Context) {
     
     private var sessionStartTime: Long = 0
     private var lastCycleTime: Long = 0
+    private var currentSessionId: Long = 0
     
     data class TotalStatistics(
         val totalSessions: Int = 0,
@@ -112,15 +113,18 @@ class StatisticsManager(private val context: Context) {
         
         scope.launch {
             try {
-                val history = SessionHistory(
-                    startTime = session.startTime,
-                    endTime = endTime,
+                val logEntry = SessionLogEntry(
+                    id = if (currentSessionId > 0) currentSessionId else 0,
+                    sessionStart = session.startTime,
+                    sessionEnd = endTime,
                     mode = "AUTO",
                     itemsProcessed = session.priceUpdates,
                     totalProfit = session.estimatedProfitSilver,
-                    averageCycleTime = session.averageCycleTimeMs
+                    averageCycleTime = session.averageCycleTimeMs,
+                    errorCount = 0,
+                    status = "COMPLETED"
                 )
-                sessionHistoryDao.insert(history)
+                sessionLogDao.insertSession(logEntry)
                 updateTotalStatistics()
             } catch (e: Exception) {
                 log(LogLevel.ERROR, "StatisticsManager", "Failed to save session: ${e.message}")
@@ -164,39 +168,32 @@ class StatisticsManager(private val context: Context) {
         return sdf.format(Date(timestamp))
     }
     
-    fun updateItemCache(itemName: String, price: Int, category: String = "") {
+    fun recordPriceHistory(itemId: String, itemName: String, price: Int, sessionId: Long) {
         scope.launch {
             try {
-                val cache = ItemCache(
+                val entry = PriceHistoryEntry(
+                    itemId = itemId,
                     itemName = itemName,
-                    lastPrice = price,
-                    lastUpdated = System.currentTimeMillis(),
-                    category = category
+                    price = price,
+                    timestamp = System.currentTimeMillis(),
+                    sessionId = sessionId
                 )
-                itemCacheDao.insert(cache)
+                priceHistoryDao.insertPriceHistory(entry)
             } catch (e: Exception) {
-                log(LogLevel.ERROR, "StatisticsManager", "Failed to update item cache: ${e.message}")
+                log(LogLevel.ERROR, "StatisticsManager", "Failed to record price history: ${e.message}")
             }
-        }
-    }
-    
-    suspend fun getCachedItemPrice(itemName: String): Int? {
-        return try {
-            itemCacheDao.getPrice(itemName)
-        } catch (e: Exception) {
-            null
         }
     }
     
     private suspend fun updateTotalStatistics() {
         try {
-            val sessions = sessionHistoryDao.getAllSessions()
+            val sessions = sessionLogDao.getAllSessions()
             
             val total = TotalStatistics(
                 totalSessions = sessions.size,
                 totalItemsProcessed = sessions.sumOf { it.itemsProcessed },
                 totalProfitSilver = sessions.sumOf { it.totalProfit },
-                totalTimeMs = sessions.sumOf { it.endTime - it.startTime },
+                totalTimeMs = sessions.sumOf { it.sessionEnd - it.sessionStart },
                 averageCycleTimeMs = if (sessions.isNotEmpty()) {
                     sessions.map { it.averageCycleTime }.average().toLong()
                 } else 0
@@ -217,8 +214,6 @@ class StatisticsManager(private val context: Context) {
     fun clearHistory() {
         scope.launch {
             try {
-                sessionHistoryDao.deleteAll()
-                itemCacheDao.deleteAll()
                 _logEntries.value = emptyList()
                 updateTotalStatistics()
                 log(LogLevel.INFO, "StatisticsManager", "History cleared")
