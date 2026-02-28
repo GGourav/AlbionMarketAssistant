@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -26,6 +25,7 @@ import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
 import com.albion.marketassistant.R
 import com.albion.marketassistant.data.AutomationMode
+import com.albion.marketassistant.data.AutomationState
 import com.albion.marketassistant.data.CalibrationData
 import com.albion.marketassistant.data.RandomizationSettings
 import com.albion.marketassistant.data.SessionStatistics
@@ -155,11 +155,11 @@ class AutomationForegroundService : Service() {
             }
             ACTION_PAUSE -> {
                 isPaused = true
-                _progress.value = "PAUSED"
+                updateProgress("PAUSED")
             }
             ACTION_RESUME -> {
                 isPaused = false
-                _progress.value = "RESUMED"
+                updateProgress("RESUMED")
             }
         }
         
@@ -224,27 +224,26 @@ class AutomationForegroundService : Service() {
                         
                         _currentState.value = result.state.name
                         _statistics.value = stateMachine.getStatistics()
-                        _progress.value = result.message
+                        updateProgress(result.message)
                         
                         if (!result.success) {
                             _lastError.value = result.message
                             if (debugMode) {
-                                _progress.value = "ERROR: ${result.message}"
+                                updateProgress("ERROR: ${result.message}")
                             }
                         }
                         
                         delay(result.delay + RandomizationHelper.getRandomDelay())
                         
-                        // In debug mode, only process 1 item
                         if (debugMode && stateMachine.getStatistics().priceUpdates >= 1) {
-                            _progress.value = "DEBUG MODE: Stopped after 1 item"
+                            updateProgress("DEBUG MODE: Stopped after 1 item")
                             delay(3000)
                             stopAutomation()
                             break
                         }
                         
-                        if (result.state == com.albion.marketassistant.data.AutomationState.COMPLETED ||
-                            result.state == com.albion.marketassistant.data.AutomationState.STOPPED) {
+                        if (result.state == AutomationState.COMPLETED ||
+                            result.state == AutomationState.STOPPED) {
                             break
                         }
                     } else {
@@ -255,7 +254,7 @@ class AutomationForegroundService : Service() {
                 }
             } catch (e: Exception) {
                 _lastError.value = "Automation error: ${e.message}"
-                _progress.value = "ERROR: ${e.message}"
+                updateProgress("ERROR: ${e.message}")
             }
         }
     }
@@ -303,7 +302,10 @@ class AutomationForegroundService : Service() {
     
     private fun processImage(image: Image) {
         // Process captured screen image for OCR and color detection
-        // This is handled by StateMachine through callbacks
+    }
+    
+    private fun updateProgress(message: String) {
+        _progress.value = message
     }
     
     private fun updateNotification() {
